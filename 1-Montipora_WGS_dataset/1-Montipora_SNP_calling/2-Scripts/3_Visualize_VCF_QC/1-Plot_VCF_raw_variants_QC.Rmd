@@ -1,0 +1,309 @@
+---
+title: "VCF QC plots of raw (unfiltered) variants"
+author: "Erin E. Chille"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+
+
+# Setup
+
+Setup R env. Load packages and set default image export formats, size and resolution.
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.height = 8, 
+                      fig.width = 12, 
+                      dev = c("png", "pdf"),
+                      dpi = 1000)
+library(tidyverse)
+options(scipen = 999) #Prevent scientific notation
+```
+
+
+
+# Variant based statistics
+
+```{r vars, echo=FALSE, message=FALSE}
+var_qual.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.gz"
+var_ldepth.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.vcf.ldepth.gz"
+var_lmiss.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.gz"
+var_freq.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.gz"
+ind_idepth.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.vcf.idepth.gz"
+ind_imiss.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.vcf.imiss.gz"
+ind_het.file <- "1-Montipora_WGS_dataset/1-Montipora_SNP_calling/1-Data/2-VCF_QC/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.het.gz"
+
+var_qual.min  <- 20
+var_depth.min <- 10
+var_depth.max <- 60
+var_lmiss.min  <- 0.25
+var_freq.min  <- 0.05
+```
+
+## Variant quality
+```{r var_qual, echo=FALSE, message=FALSE}
+var_qual <-  read.table(file = var_qual.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+summary(var_qual$QUAL)
+
+var_qual.plot <- var_qual %>% 
+  ggplot(aes(QUAL)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light()
+
+var_qual.inset.plot <- var_qual %>% 
+  filter(QUAL < 500) %>% 
+  ggplot(aes(QUAL)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_qual.min, color = "red", linewidth=1.0)
+
+var_qual.filt.plot <- var_qual %>%
+  filter(QUAL > 20 & QUAL < 500) %>% 
+  ggplot(aes(QUAL)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.lqual.pdf", height = 20, width = 20)
+var_qual.inset.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.pdf", height = 20, width = 20)
+var_qual.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lqual.pdf", height = 20, width = 20)
+var_qual.filt.plot
+dev.off()
+```
+
+## Variant mean depth
+```{r var_depth, echo=FALSE, message=FALSE}
+var_ldepth <-  read.table(file = var_ldepth.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+summary(var_ldepth$MEAN_DEPTH)
+
+
+var_ldepth.plot <- var_ldepth %>% 
+  ggplot(aes(MEAN_DEPTH)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
+  geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_ldepth.plot
+
+var_ldepth.inset.plot <- var_ldepth %>% 
+  filter(MEAN_DEPTH < 100) %>% 
+  ggplot(aes(MEAN_DEPTH)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
+  geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_ldepth.inset.plot
+
+var_ldepth.filter.plot <- var_ldepth %>% 
+  filter(MEAN_DEPTH > var_depth.min & MEAN_DEPTH < var_depth.max) %>% 
+  ggplot(aes(MEAN_DEPTH)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
+  geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_ldepth.filter.plot
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.ldepth.pdf", height = 20, width = 20)
+var_ldepth.inset.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.ldepth.pdf", height = 20, width = 20)
+var_ldepth.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.ldepth.pdf", height = 20, width = 20)
+var_ldepth.filter.plot
+dev.off()
+```
+
+## Variant missingness
+```{r var_miss, echo=FALSE, message=FALSE}
+var_lmiss <- read.table(file = var_lmiss.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+summary(var_lmiss$F_MISS)
+
+var_lmiss.plot <- var_lmiss %>% 
+  ggplot(aes(F_MISS)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_lmiss.min, color = "red", size=1.0); var_lmiss.plot
+
+var_lmiss.filt.plot <- var_lmiss %>% 
+  filter(F_MISS < var_lmiss.min) %>% 
+  ggplot(aes(F_MISS)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_lmiss.min, color = "red", size=1.0); var_lmiss.filt.plot
+
+pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.pdf", height = 20, width = 20)
+var_lmiss.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lmiss.pdf", height = 20, width = 20)
+var_lmiss.filt.plot
+dev.off()
+```
+
+## Minor allele frequency
+```{r var_freq, echo=FALSE, message=FALSE}
+var_freq <- read.table(file = var_freq.file, 
+             sep = '\t', 
+             header = FALSE, 
+             as.is = TRUE,
+             fill = TRUE, 
+             col.names = c("CHR", "POS", "N_ALLELES", "N_CHR", "A1", "A2"))
+
+var_freq <- filter(var_freq, CHR != "CHROM")
+
+# find minor allele frequency
+var_freq$MAF <- var_freq %>% 
+  select(A1, A2) %>% 
+  apply(1, function(z) min(z)) %>% 
+  as.numeric()
+
+summary(var_freq$MAF)
+
+var_freq.plot <- var_freq %>% 
+  ggplot(aes(MAF)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_freq.min, color = "red", size=1.0); var_freq.plot
+
+var_freq.filt.plot <- var_freq %>% 
+  filter(MAF > 0.05) %>% 
+  ggplot(aes(MAF)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_freq.min, color = "red", size=1.0); var_freq.filt.plot
+
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.pdf", height = 20, width = 20)
+var_freq.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.frq.pdf", height = 20, width = 20)
+var_freq.filt.plot
+dev.off()
+```
+
+
+
+
+
+# Individual based statistics
+
+## Mean depth per individual
+```{r ind_depth, echo=FALSE, message=FALSE}
+var_idepth <-  read.table(file = ind_idepth.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+summary(var_idepth$MEAN_DEPTH)
+
+
+var_idepth.plot <- var_idepth %>% 
+  ggplot(aes(MEAN_DEPTH)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
+  geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_idepth.plot
+
+var_idepth.filter.plot <- var_idepth %>% 
+  filter(MEAN_DEPTH > var_depth.min & MEAN_DEPTH < var_depth.max) %>% 
+  ggplot(aes(MEAN_DEPTH)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
+  geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_idepth.filter.plot
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.idepth.pdf", height = 20, width = 20)
+var_idepth.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.idepth.pdf", height = 20, width = 20)
+var_idepth.filter.plot
+dev.off()
+```
+
+## Proportion of missing data per individual
+
+```{r}
+var_imiss <- read.table(file = ind_imiss.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+summary(var_imiss$F_MISS)
+
+var_imiss.plot <- var_imiss %>% 
+  ggplot(aes(F_MISS)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light() +
+  geom_vline(xintercept = var_miss.min, color = "red", size=1.0); var_imiss.plot
+
+var_imiss.inset.plot <- var_imiss %>% 
+  ggplot(aes(F_MISS)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
+  theme_light(); var_imiss.inset.plot
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.imiss.pdf", height = 20, width = 20)
+var_imiss.plot
+dev.off()
+
+pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.imiss.pdf", height = 20, width = 20)
+var_imiss.inset.plot
+dev.off()
+```
+
+
+## Heterozygosity and inbreeding coefficient per individual
+```{r ind_het, echo=FALSE, message=FALSE}
+ind_het <- read.table(file = ind_het.file, 
+             sep = '\t', 
+             header = TRUE, 
+             as.is = TRUE,
+             fill = TRUE)
+
+ind_het.plot <- ind_het %>% 
+  arrange(F) %>% 
+  ggplot(aes(x = F)) +
+  geom_histogram(fill = "dodgerblue", colour = "black", alpha = 0.3) +
+  labs(x = "Inbreeding coefficient F") +
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)); ind_het.plot
+
+summary(ind_het$F)
+
+pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.het.pdf", height = 20, width = 20)
+ind_het.plot
+dev.off()
+```

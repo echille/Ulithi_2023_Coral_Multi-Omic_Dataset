@@ -24,7 +24,7 @@ Dataset is associated with [Chille et al. 2026]().
 
 **Conclusions:** These data provide a resource for examining how anthropogenic pressures influence coral physiology and resilience across environmental gradients. They also allow the identification of biomarkers of chronic stress that may inform the development of point-of-care diagnostic tools for coral health and contribute to evidence-based reef conservation and management strategies.
 
-![sampling map](https://github.com/echille/Ulithi_2023_Coral_Multi-Omic_Dataset/blob/main/0-Sample_metadata/Figure1_sampling_map_polished_with_coral_pics.png?raw=true)
+![sampling map](https://github.com/echille/Ulithi_2023_Coral_Multi-Omic_Dataset/blob/main/Figure1_sampling_map_polished_with_coral_pics.png?raw=true)
 
 ---
 

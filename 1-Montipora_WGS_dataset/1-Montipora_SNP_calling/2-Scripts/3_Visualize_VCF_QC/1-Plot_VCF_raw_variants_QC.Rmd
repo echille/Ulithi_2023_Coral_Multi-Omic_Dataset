@@ -78,15 +78,15 @@ var_qual.filt.plot <- var_qual %>%
   geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
   theme_light()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.lqual.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.lqual.pdf", height = 20, width = 20)
 var_qual.inset.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.pdf", height = 20, width = 20)
 var_qual.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lqual.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lqual.pdf", height = 20, width = 20)
 var_qual.filt.plot
 dev.off()
 ```
@@ -125,15 +125,15 @@ var_ldepth.filter.plot <- var_ldepth %>%
   geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
   geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_ldepth.filter.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.ldepth.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.ldepth.pdf", height = 20, width = 20)
 var_ldepth.inset.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.ldepth.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.ldepth.pdf", height = 20, width = 20)
 var_ldepth.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.ldepth.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.ldepth.pdf", height = 20, width = 20)
 var_ldepth.filter.plot
 dev.off()
 ```
@@ -203,11 +203,11 @@ var_freq.filt.plot <- var_freq %>%
   geom_vline(xintercept = var_freq.min, color = "red", size=1.0); var_freq.filt.plot
 
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.pdf", height = 20, width = 20)
 var_freq.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.frq.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.frq.pdf", height = 20, width = 20)
 var_freq.filt.plot
 dev.off()
 ```
@@ -244,11 +244,11 @@ var_idepth.filter.plot <- var_idepth %>%
   geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
   geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_idepth.filter.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.idepth.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.idepth.pdf", height = 20, width = 20)
 var_idepth.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.idepth.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.idepth.pdf", height = 20, width = 20)
 var_idepth.filter.plot
 dev.off()
 ```
@@ -275,11 +275,11 @@ var_imiss.inset.plot <- var_imiss %>%
   geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
   theme_light(); var_imiss.inset.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.imiss.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.imiss.pdf", height = 20, width = 20)
 var_imiss.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/1-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.imiss.pdf", height = 20, width = 20)
+pdf("1-Montipora_WGS_dataset/1-Montipora_SNP_calling/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.imiss.pdf", height = 20, width = 20)
 var_imiss.inset.plot
 dev.off()
 ```

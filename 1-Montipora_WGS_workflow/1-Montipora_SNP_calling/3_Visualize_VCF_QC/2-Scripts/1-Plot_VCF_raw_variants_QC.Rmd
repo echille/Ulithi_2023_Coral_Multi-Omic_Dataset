@@ -164,11 +164,11 @@ var_lmiss.filt.plot <- var_lmiss %>%
   theme_light() +
   geom_vline(xintercept = var_lmiss.min, color = "red", size=1.0); var_lmiss.filt.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.pdf"), height = 20, width = 20)
+pdf(file.path(output_path, "/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.pdf"), height = 20, width = 20)
 var_lmiss.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lmiss.pdf"), height = 20, width = 20)
+pdf(file.path(output_path, "/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.lmiss.pdf"), height = 20, width = 20)
 var_lmiss.filt.plot
 dev.off()
 ```
@@ -306,7 +306,7 @@ ind_het.plot <- ind_het %>%
 
 summary(ind_het$F)
 
-pdf("5-Mcapitata-genotyping/3-Output/2-Unfiltered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.het.pdf"), height = 20, width = 20)
+pdf(file.path(output_path, "/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.het.pdf"), height = 20, width = 20)
 ind_het.plot
 dev.off()
 ```

@@ -1,0 +1,881 @@
+---
+title: "U23_datacleaning_acrop"
+author: "Gabby Panayotakis"
+date: "2025-01-06"
+output: html_document
+---
+
+## Metabolomics data cleaning and preparation workflow
+
+### Goal:
+
+To prepare and quality check raw metabolomic data prior to downstream metabolomics analyses (e.g. WGCNA, differential abundance analysis, etc...)
+
+### About:
+
+This workflow uses the "MetCleaning" R package to clean up and prepare MS peak spectra data prior to statistical analysis. Please refer to the [manual](https://github.com/MetabLAB/MetCleaning/blob/master/vignettes/MetCleaning.pdf) for further information. This workflow assumes that you are starting with a table of unannotated compounds and their MS peak intensities. Based off of the TidyMass tutorial [(here)](https://www.tidymass.org/docs/chapter2/1-create_mass_dataset/).
+
+### **This workflow:**
+
+1.  [Workspace Preparation]
+2.  [Data reading and preparation]
+3.  [Explore dataset]
+4.  [Data cleaning]
+5.  [Technical variable correction]
+6.  [Save the cleaned data]
+
+![](https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41467-022-32155-w/MediaObjects/41467_2022_32155_Fig3_HTML.png?as=webp)
+
+[Note: An important decision point in this script, is whether to keep or remove outliers (4. Data cleaning: Identify and remove outliers). Be sure to check results before moving to the next step.]{underline}
+
+## Workspace Preparation
+
+### Install and Load Packages
+For more information, see "Chapter 1 Installation" from the Tidymass online tutorial.
+
+This workflow utilizes the TidyMass package which includes tidyR and ggplot as dependencies. The following code will install TidyMass and all required dependencies. For further directions and troubleshooting see <https://www.tidymass.org/docs/chapter1/1-installation/>
+
+```{r}
+# install.packages("BiocManager")
+# BiocManager::install("MSnbase")
+#  if(!require(remotes)){
+#      install.packages("remotes")
+#  }
+#  remotes::install_gitlab("tidymass/tidymass")
+```
+
+Clear environment and load package(s)
+
+```{r, warning=FALSE}
+rm(list = ls()) #clear environment
+library(tidymass)
+library(BiocManager)
+library(readr)
+library(dplyr)
+library(ggplotify)
+library(hexbin)
+```
+
+### Input Files Preparation
+For more information, see "Chapter 2 massDataset package" from the Tidymass online tutorial.
+
+## Data reading and preparation
+
+### Prepare the CSV files
+
+This workflow requires [three files for each ionization mode]{.underline}: 
+(1) sample_info: a LCMS run metadata table 
+(2) variable_info: a sample metadata table to be extracted from expression_data, and 
+(3) expression_data: an ionization peaks table. We are also including (4) sample_groups for additional analysis including all metadata. Parameters for each file type are detailed below.
+
+Note that your [sample IDs must match exactly across all files]{.underline} and [sample_info must match the compound ID in the associated expression data table]{.underline}.
+
+Path to input files
+```{r}
+in_path <- "3-Metabolomic_workflow/2-Acropora/1-Input"
+```
+
+```{r}
+peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_expression_data.csv"))
+peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_expression_data.csv"))
+
+sample_info_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_sample_info.csv"))
+sample_info_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_sample_info.csv"))
+
+sample_groups_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_sample_groups.csv"))
+sample_groups_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_sample_groups.csv"))
+
+#Add sample group information to sample info
+sample_info_pos <- left_join(sample_info_pos, sample_groups_pos, by="sample_id")
+sample_info_neg <- left_join(sample_info_neg, sample_groups_neg, by="sample_id")
+```
+
+Variable (metabolite) information (e.g. mass-to-charge ration ("mz"), retention time ("rt), isotope distribution ("isotope.dist")) and expression data are in the peak tables, so we have to separate them
+
+[Positive]{.underline}
+```{r}
+expression_data_pos  <-  
+  peak_table_pos %>% 
+  dplyr::select(-c(variable_id:isotope.dist)) %>% #minus bc want all other cols 
+  as.data.frame() ; head(expression_data_pos)
+
+variable_info_pos = 
+  peak_table_pos %>% 
+  dplyr::select(variable_id:isotope.dist) %>% 
+  as.data.frame(); head(variable_info_pos)
+
+rownames(expression_data_pos) <-  variable_info_pos$variable_id; head(expression_data_pos) 
+
+expression_data_pos[expression_data_pos == 0] <- NA #NA is missing data
+#rows are metabolite names, columns are sample name
+```
+
+[Negative]{.underline}
+```{r}
+expression_data_neg  <-  
+  peak_table_neg %>% 
+  dplyr::select(-c(variable_id:isotope.dist)) %>% 
+  as.data.frame() ; head(expression_data_neg)
+
+variable_info_neg = 
+  peak_table_neg %>% 
+  dplyr::select(variable_id:isotope.dist) %>% 
+  as.data.frame(); head(variable_info_neg)
+
+rownames(expression_data_neg) <-  variable_info_neg$variable_id; head(expression_data_neg) 
+
+expression_data_neg[expression_data_neg == 0] <- NA
+```
+
+Make sure that rowname and colname orders match up. 
+If output is false, then cols dont match row names (could be extra col, etc). Check where and remove from the CSV files
+
+```{r}
+expression_data_pos = 
+  expression_data_pos[,sample_info_pos$sample_id]
+all(diff(match(colnames(expression_data_pos),sample_info_pos$sample_id)) > 0)
+
+expression_data_neg = 
+  expression_data_neg[,sample_info_neg$sample_id]
+all(diff(match(colnames(expression_data_neg),sample_info_neg$sample_id)) > 0)
+```
+
+Verify the dataset qualities
+```{r}
+ncol(expression_data_pos)
+length(sample_groups_pos$sample_id)
+setdiff(colnames(expression_data_pos), sample_groups_pos$sample_id)
+
+ncol(expression_data_neg)
+length(sample_groups_neg$sample_id)
+setdiff(colnames(expression_data_neg), sample_groups_neg$sample_id)
+```
+
+### Create mass_data class object for each ionization mode
+
+```{r}
+object_pos <-
+  create_mass_dataset(
+    expression_data = expression_data_pos,
+    sample_info = sample_info_pos,
+    variable_info = variable_info_pos
+  )
+object_pos
+```
+
+
+```{r}
+object_neg <-
+  create_mass_dataset(
+    expression_data = expression_data_neg,
+    sample_info = sample_info_neg,
+    variable_info = variable_info_neg
+  )
+object_neg
+```
+
+Potential save/export option if not continuing analysis in same script. 
+
+```{r}
+# save(object_pos, file = "feature_table/object_pos")
+# save(object_neg, file = "feature_table/object_neg")
+# 
+# export_mass_dataset(object = object_pos,
+#                     file_type = "xlsx",
+#                     path = "feature_table/demo_data_pos")
+# export_mass_dataset(object = object_neg,
+#                     file_type = "xlsx",
+#                     path = "feature_table/demo_data_neg")
+```
+
+We will skip Chapters  3 & 4 of the Tidymass online tutorial, because we do not need to process raw peak data.
+
+## Explore dataset
+For more information, see "Chapter 5 Explore data" from the Tidymass online tutorial.
+
+### Positive Mode
+
+Assess that the loaded data is correct
+```{r}
+dim(object_pos)
+
+object_pos %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(class)
+
+object_pos %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(group)
+
+object_pos %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(batch)
+```
+
+Generate a peak distribution plot
+```{r}
+object_pos %>%
+  `+`(1) %>% 
+  log(10) %>%
+  show_mz_rt_plot() +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+Explore missing values 
+```{r}
+get_mv_number(object = object_pos)
+
+get_mv_number(object = object_pos, by = "sample") %>% #per sample
+  head()
+
+get_mv_number(object = object_pos, by = "variable") %>% #per variable
+  head()
+```
+
+Plot the MV data
+```{r}
+show_missing_values(object = object_pos, show_column_names = FALSE, percentage = TRUE)
+
+show_sample_missing_values(object = object_pos, percentage = TRUE)
+
+show_variable_missing_values(
+  object = object_pos,
+  percentage = TRUE,
+  show_x_text = FALSE,
+  show_x_ticks = FALSE
+) +
+  scale_size_continuous(range = c(0.01, 1))
+```
+
+Repeat for Negative mode.
+
+### Negative Mode
+
+Assess that the loaded data is correct
+```{r}
+dim(object_neg)
+
+object_neg %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(class)
+
+object_neg %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(group)
+
+object_neg %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::count(batch)
+```
+
+Generate a peak distribution plot
+```{r}
+object_neg %>%
+  `+`(1) %>% 
+  log(10) %>%
+  show_mz_rt_plot() +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+Explore missing values 
+```{r}
+get_mv_number(object = object_neg)
+
+get_mv_number(object = object_neg, by = "sample") %>% #per sample
+  head()
+
+get_mv_number(object = object_neg, by = "variable") %>% #per variable
+  head()
+```
+
+Plot the MV data
+```{r}
+show_missing_values(object = object_neg, show_column_names = FALSE, percentage = TRUE)
+
+show_sample_missing_values(object = object_neg, percentage = TRUE)
+
+show_variable_missing_values(
+  object = object_neg,
+  percentage = TRUE,
+  show_x_text = FALSE,
+  show_x_ticks = FALSE
+) +
+  scale_size_continuous(range = c(0.01, 1))
+```
+
+## Data cleaning
+For more information, see "Chapter 6 Data cleaning" from the Tidymass online tutorial.
+
+Change batch to character.
+
+```{r}
+object_pos <- 
+  object_pos %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::mutate(batch = as.character(batch))
+
+object_neg <- 
+  object_neg %>% 
+  activate_mass_dataset(what = "sample_info") %>% 
+  dplyr::mutate(batch = as.character(batch))
+
+```
+
+### Pre-cleaning report
+
+Create a report of raw data quality. Save as HTML. It is recommended to review the HTML report for the pre-cleaned dataset before moving forward.
+
+```{r}
+# massqc::massqc_report(object = object_pos,
+#                       path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_pre_cleanup")
+# massqc::massqc_report(object = object_neg,
+#                       path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_pre_cleanup")
+```
+
+
+
+### Filter out noisy metabolites
+
+First, we will filter out metabolites that are too highly variable across our sample set. We will follow the ['80% rule'](https://pubs.acs.org/doi/10.1021/ac051080y?src=getftr) for the thermal stress treatments in which metabolites with a missingness frequency of 80% across the control and stress treatment are removed.
+
+**Note:** While the '80% rule' is the standard for the metabolomics field, you should consider whether is makes sense for your experimental design, assess how it impacts your data, and apply a different filtering threshold, if necessary
+
+#### Positive
+
+Check MVpercentage before noisy feature removal
+```{r}
+show_variable_missing_values(object = object_pos %>% 
+                               activate_mass_dataset(what = "sample_info"), 
+                             percentage = TRUE) +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+The standard method of applying the 80% rule
+```{r}
+MV.lim = 0.8 #standard missing value threshold for both datasets
+
+nfeatures_before <- nrow(extract_variable_info(object_pos))
+
+object_pos =
+  object_pos %>%
+  mutate_variable_na_freq()
+
+object_pos <-
+  object_pos %>%
+  activate_mass_dataset(what = "variable_info") %>%
+  filter(na_freq < MV.lim)
+
+nfeatures_after <- nrow(extract_variable_info(object_pos))
+```
+
+Check the before and after to verify and quantify MVs removed
+```{r}
+#Check before and after
+nfeatures_before
+nfeatures_after
+nfeatures_before - nfeatures_after #total MVs removed
+```
+
+Check MVpercentage after noisy feature removal
+```{r}
+show_variable_missing_values(object = object_pos %>% 
+                               activate_mass_dataset(what = "sample_info"), 
+                             percentage = TRUE) +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+#### Negative
+
+Check MVpercentage before noisy feature removal
+```{r}
+show_variable_missing_values(object = object_neg %>% 
+                               activate_mass_dataset(what = "sample_info"), 
+                             percentage = TRUE) +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+The standard method of applying the 80% rule
+```{r}
+MV.lim = 0.8 #standard missing value threshold for both datasets
+
+nfeatures_before <- nrow(extract_variable_info(object_neg))
+
+object_neg =
+  object_neg %>%
+  mutate_variable_na_freq()
+
+object_neg <-
+  object_neg %>%
+  activate_mass_dataset(what = "variable_info") %>%
+  filter(na_freq < MV.lim)
+
+nfeatures_after <- nrow(extract_variable_info(object_neg))
+```
+
+Check the before and after to verify and quantify MVs removed
+```{r}
+#Check before and after
+nfeatures_before
+nfeatures_after
+nfeatures_before - nfeatures_after #total MVs removed
+```
+
+Check MVpercentage after noisy feature removal
+```{r}
+show_variable_missing_values(object = object_neg %>% 
+                               activate_mass_dataset(what = "sample_info"), 
+                             percentage = TRUE) +
+  scale_size_continuous(range = c(0.01, 2))
+```
+
+### Identify and remove outlier samples
+
+#### Positive
+
+[Outlier detection]{.underline}
+
+Visualize the samples
+```{r}
+massdataset::show_sample_missing_values(object = object_pos,
+                                        color_by = "group",
+                                        order_by = "injection.order",
+                                        percentage = TRUE) +
+  theme(axis.text.x = element_text(size = 2)) +
+  scale_size_continuous(range = c(0.1, 2)) +
+  ggsci::scale_color_aaas()
+
+```
+Detect outlier samples
+```{r}
+outlier_samples_pos =
+  object_pos %>%
+  `+`(1) %>% 
+  log(2) %>%
+  scale() %>%
+  detect_outlier(); outlier_samples_pos
+```
+
+```{r}
+outlier_table_pos <- extract_outlier_table(outlier_samples_pos) %>%
+  apply(1, function(x){
+    sum(x)
+  }) %>%
+  `>`(0) %>%
+  which()
+outlier_table_pos
+```
+
+No positive outliers detected. (need to be identified in 2/4 of the tidymass tests)
+
+[Outlier removal]{.underline}
+
+If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
+
+Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
+
+```{r}
+nrow(extract_sample_info(object_pos)) #number of samples before
+
+# object_pos <- object_pos %>%
+#   activate_mass_dataset(what = "sample_info") %>%
+#   filter(!sample_id%in%names(outlier_list_pos))
+
+nrow(extract_sample_info(object_pos)) #number of samples after
+```
+
+Check the results of removing outliers
+```{r}
+pos_exp_mat <- extract_expression_data(object_pos)
+pos_exp_mat[is.na(pos_exp_mat)] <- 0
+pca <- prcomp(t(pos_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+pos_pca <- data.frame(extract_sample_info(object_pos), pca$x) #make a dataframe containing all plotting info
+```
+
+```{r}
+ggplot(data = pos_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+
+#### Negative
+
+[Outlier detection]{.underline}
+
+Visualize the samples
+```{r}
+massdataset::show_sample_missing_values(object = object_neg,
+                                        color_by = "group",
+                                        order_by = "injection.order",
+                                        percentage = TRUE) +
+  theme(axis.text.x = element_text(size = 2)) +
+  scale_size_continuous(range = c(0.1, 2)) +
+  ggsci::scale_color_aaas()
+
+```
+
+Detect outlier samples
+```{r}
+outlier_samples_neg =
+  object_neg %>%
+  `+`(1) %>% 
+  log(2) %>%
+  scale() %>%
+  detect_outlier(); outlier_samples_neg
+```
+
+```{r}
+outlier_table_neg <- extract_outlier_table(outlier_samples_neg) %>%
+  apply(1, function(x){
+    sum(x)
+  }) %>%
+  `>`(0) %>%
+  which()
+outlier_table_neg
+```
+
+No Negative outliers detected. (need to be identified in 2/4 of the tidymass tests)
+
+[Outlier removal]{.underline}
+
+If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
+
+Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
+
+```{r}
+nrow(extract_sample_info(object_neg)) #number of samples before
+
+# object_neg <- object_neg %>%
+#   activate_mass_dataset(what = "sample_info") %>%
+#   filter(!sample_id%in%names(outlier_list_neg))
+
+nrow(extract_sample_info(object_neg)) #number of samples after
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Check the results of removing outliers
+```{r}
+neg_exp_mat <- extract_expression_data(object_neg)
+neg_exp_mat[is.na(neg_exp_mat)] <- 0
+pca <- prcomp(t(neg_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+neg_pca <- data.frame(extract_sample_info(object_neg), pca$x) #make a dataframe containing all plotting info
+```
+
+
+```{r}
+ggplot(data = neg_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+### MV percentage after filtering, but before imputation
+
+```{r}
+show_sample_missing_values(object = object_pos, percentage = TRUE)
+x.axis.order <- c("A23", "A325", "A331", "A306", "A22", "A21", "A26", "A309", "A25", "A339", "A328", "A326", "M63", "M61", "A323", "M62", "A340", "M64", "M65", "A24", "A315")
+
+MVplot.pos <- show_sample_missing_values(object = object_pos, 
+                                         percentage = TRUE)
+MVplot.pos.ordered <- MVplot.pos +  scale_x_discrete(limits = x.axis.order)
+
+print(MVplot.pos.ordered)
+
+ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_pos_before_imputation_acropora.pdf", plot = MVplot.pos.ordered, width = 9.1, height = 7, units = "in")
+```
+
+```{r}
+show_sample_missing_values(object = object_neg, percentage = TRUE)
+x.axis.order <- c("A23", "A325", "A331", "A306", "A22", "A21", "A26", "A309", "A25", "A339", "A328", "A326", "M63", "M61", "A323", "M62", "A340", "M64", "M65", "A24", "A315")
+
+MVplot.neg <- show_sample_missing_values(object = object_neg, 
+                                         percentage = TRUE)
+MVplot.neg.ordered <- MVplot.neg +  scale_x_discrete(limits = x.axis.order)
+
+print(MVplot.neg.ordered)
+
+ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_neg_before_imputation_acropora.pdf", plot = MVplot.neg.ordered, width = 9.1, height = 7, units = "in")
+```
+
+
+
+### Missing value imputation
+
+Here, we use the random forest method to impute missing values for our two datasets. Sampling methods, such as random forest, have been shown to be the most robust method for imputing missing values in datasets with low structure and with outliers [](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-019-3110-0). Knn is a good backup option when you have high structure and low computational power.
+
+#### [Positive]{.underline}
+```{r}
+get_mv_number(object_pos)
+
+object_pos <- 
+  impute_mv(object = object_pos, method = "rf")
+
+get_mv_number(object_pos)
+```
+
+Check data variation
+```{r}
+pos_exp_mat <- extract_expression_data(object_pos)
+pos_exp_mat[is.na(pos_exp_mat)] <- 0
+pca <- prcomp(t(pos_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+pos_pca <- data.frame(extract_sample_info(object_pos), pca$x) #make a dataframe containing all plotting info
+```
+
+```{r}
+ggplot(data = pos_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+
+#### [Negative]{.underline}
+```{r}
+get_mv_number(object_neg)
+
+object_neg <- 
+  impute_mv(object = object_neg, method = "rf")
+
+get_mv_number(object_neg)
+```
+
+Check data variation
+```{r}
+neg_exp_mat <- extract_expression_data(object_neg)
+neg_exp_mat[is.na(neg_exp_mat)] <- 0
+pca <- prcomp(t(neg_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+neg_pca <- data.frame(extract_sample_info(object_neg), pca$x) #make a dataframe containing all plotting info
+```
+
+
+```{r}
+ggplot(data = neg_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+
+### Data normalization and integration
+
+Data normalization and integration by the median method. Cannot use QC-based methods like SVR or Loess because we don’t have any QC samples. Play around with the median and mean options and see what works best for your data.
+
+#### Positive
+
+```{r}
+object_pos <- 
+  normalize_data(object_pos, method = "median")
+
+object_pos2 <- 
+  integrate_data(object_pos, method = "subject_median")
+```
+
+Visualize the normalization method. May have to go back to the last step and try a different method to compare.
+
+```{r}
+object_pos2 %>% 
+  `+`(1) %>% 
+  log(2) %>% 
+  massqc::massqc_pca(color_by = "batch", line = FALSE)
+```
+
+```{r}
+pos_exp_mat <- extract_expression_data(object_pos2)
+pos_exp_mat[is.na(pos_exp_mat)] <- 0
+pca <- prcomp(t(pos_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+pos_pca <- data.frame(extract_sample_info(object_pos2), pca$x) #make a dataframe containing all plotting info
+```
+
+```{r}
+ggplot(data = pos_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+
+Plot compound mass-to-charge ratio against retention time
+```{r}
+pos_plot <- object_pos2 %>%
+  `+`(1) %>% 
+  log(10) %>%
+  show_mz_rt_plot() +
+  ggtitle("Positive ionization mode") +
+  scale_size_continuous(range = c(0.01, 2)); pos_plot
+```
+
+Create a report of raw data quality. Save as HTML.
+
+```{r, echo=F}
+# massqc::massqc_report(object = object_pos2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_post_cleanup")
+```
+
+#### Negative
+
+```{r}
+object_neg <- 
+  normalize_data(object_neg, method = "median")
+
+object_neg2 <- 
+  integrate_data(object_neg, method = "subject_median")
+```
+
+Visualize the normalization method. May have to go back to the last step and try a different method to compare.
+
+```{r}
+object_neg2 %>% 
+  `+`(1) %>% 
+  log(2) %>% 
+  massqc::massqc_pca(color_by = "batch", line = FALSE)
+```
+
+```{r}
+neg_exp_mat <- extract_expression_data(object_neg2)
+neg_exp_mat[is.na(neg_exp_mat)] <- 0
+pca <- prcomp(t(neg_exp_mat), scale. = F)
+
+percentVar <- pca$sdev^2/sum(pca$sdev^2) #save % variation by PC1 and PC2
+
+neg_pca <- data.frame(extract_sample_info(object_neg2), pca$x) #make a dataframe containing all plotting info
+```
+
+```{r}
+ggplot(data = neg_pca, aes_string(x = "PC1", y = "PC2")) + 
+  geom_point(size = 3, aes(shape=group, colour=group)) +
+  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) +
+  ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) +
+  coord_fixed() 
+```
+
+Plot compound mass-to-charge ratio against retention time
+```{r}
+neg_plot <- object_neg2 %>%
+  `+`(1) %>% 
+  log(10) %>%
+  show_mz_rt_plot() +
+  ggtitle("Negative ionization mode") +
+  scale_size_continuous(range = c(0.01, 2)); neg_plot
+```
+
+Create a report of raw data quality. Save as HTML.
+
+```{r, echo=F}
+# massqc::massqc_report(object = object_neg2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_post_cleanup")
+```
+
+## Technical variable correction
+
+### Re-load the data
+```{r}
+#positive
+EDPC <- object_pos2@expression_data
+    EDPC <- log(EDPC) %>% t()
+MPC <- object_pos2@sample_info
+    MPC <- MPC %>% mutate(Ion_mode = "Positive Ionization") %>% mutate(Data_type = "Cleaned Data")
+#negative
+EDNC <- object_neg2@expression_data
+    EDNC <- log(EDNC) %>% t()
+MNC <- object_neg2@sample_info
+    MNC <- MNC %>% mutate(Ion_mode = "Negative Ionization") %>% mutate(Data_type = "Cleaned Data")
+```
+
+### Get rid of technical bias
+
+Get rid of injection order bias in the positive expression data
+```{r}
+library(limma)
+MPC_corr <- MPC %>% dplyr::select(injection.order, sample_id)
+row.names(MPC_corr) <- MPC$sample_id
+
+MPC_corr <- MPC_corr[row.names(EDPC),]
+MPC_corr <- as.data.frame(lapply(MPC_corr, factor))
+MPC_corr <- as.data.frame(lapply(MPC_corr, as.numeric))
+
+design <- model.matrix(~sample_id + injection.order, data = MPC_corr)
+sample_id.design <- design[, 1:2]
+batch.design <- design[, -(1:2)]
+corr.data <- removeBatchEffect(t(EDPC), design = sample_id.design, covariates = batch.design)
+
+EDPC <- corr.data
+```
+
+Get rid of injection order bias in the negative expression data
+```{r}
+MNC_corr <- MNC %>% dplyr::select(injection.order, sample_id)
+row.names(MNC_corr) <- MNC$sample_id
+
+MNC_corr <- MNC_corr[row.names(EDNC),]
+MNC_corr <- as.data.frame(lapply(MNC_corr, factor))
+MNC_corr <- as.data.frame(lapply(MNC_corr, as.numeric))
+
+design <- model.matrix(~sample_id + injection.order, data = MNC_corr)
+sample_id.design <- design[, 1:2]
+batch.design <- design[, -(1:2)]
+corr.data <- removeBatchEffect(t(EDNC), design = sample_id.design, covariates = batch.design)
+
+EDNC <- corr.data
+```
+
+# 4. Make the final tidymass object
+
+Positve tidymass object
+```{r}
+EDPC <- as.data.frame(EDPC)
+sample_info_pos <- object_pos2@sample_info
+variable_info_pos <- object_pos2@variable_info
+
+object_pos3 =
+    create_mass_dataset(
+        expression_data = EDPC,
+        sample_info = sample_info_pos,
+        variable_info = variable_info_pos
+    )
+```
+
+Negative tidymass object
+```{r}
+EDNC <- as.data.frame(EDNC)
+sample_info_neg <- object_neg2@sample_info
+variable_info_neg <- object_neg2@variable_info
+
+object_neg3 =
+    create_mass_dataset(
+        expression_data = EDNC,
+        sample_info = sample_info_neg,
+        variable_info = variable_info_neg
+    )
+```
+
+## Save Clean Data
+
+```{r}
+save(object_pos3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acr")
+save(object_neg3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acr")
+```

@@ -1,1 +1,2 @@
 *.frq.gz filter=lfs diff=lfs merge=lfs -text
+*.lqual.gz filter=lfs diff=lfs merge=lfs -text

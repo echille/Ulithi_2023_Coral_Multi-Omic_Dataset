@@ -1,0 +1,293 @@
+---
+title: "Ulithi23 Symbiont Composition Analysis"
+author: "Erin Chille"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+### Goal:
+To visualize results from read classification for major symbiont clade identification.
+
+## Set up workspace
+
+1. Clear environment and load package(s)
+```{r, warning=FALSE}
+rm(list = ls()) #clear environment
+library(dplyr)
+library(tidyverse)
+library(RColorBrewer)
+library(ggplot2)
+library(circlize)
+library(colorspace)
+library(ComplexHeatmap)
+library(vegan)
+library(car)
+library(rcompanion)
+library(lme4)
+library(lmerTest)
+```
+
+2. Read in metadata
+```{r}
+## Read metadata and join site info
+meta <- readr::read_csv("1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/Ulithi23_sampleinfo.csv")
+```
+3. Set colors for sites
+```{r}
+site.col <- c(
+   "Falalop" = "#CB6876",
+  "Asor" = "#F0A202",
+  "MogMog"  = "#F18805",
+  "Federai" = "#C45E45",
+  "Sorghlei" = "#B7775C",
+  "Fetabul" = "#A6CEE3",
+  "Laam" = "#41B6C4",
+  "Pigleilei" = "#A1DAB4",
+  "Sohng" = "#9485BD",
+  "Yealeil" = "#7FDBFF")
+```
+
+4. Set parameters for heatmaps.
+```{r}
+#Set heatmap colors
+col_fun_prop = hcl.colors(12, "rocket", rev = T, alpha = 0.5)
+col_fun_dist = hcl.colors(12, "rocket", rev = F, alpha = 0.5)
+```
+
+## Major Symbiont Clade Identification
+
+The relative abundance of major clades (genera) of Symbiodiniaceae was profiled using [kraken](https://ccb.jhu.edu/software/kraken/) version 1.1.1 [@Wood2014-qp] to classify raw reads from each sample.  To ensure that this made full use of available reads and also that it was not affected by biased database composition we restricted our analysis to taxa for which a complete reference genome was available. This included the following data:
+
+ - Symbiodinium (Nand et al. 2021)  
+ - Breviolum (Aquatic Symbiosis Project 2025)  
+ - Cladocopium (Chen et al. 2022)  
+ - Durusdinium (Dougan et al. 2023)  
+ - Effrenium (Shah et al. 2023)  
+ - Fugacium (Li et al. 2019)
+
+These genomes were combined with the highly complete Kaneohe Bay *M. capitata* genome, the local genome from Ulithi *M. aff.capitata* genome as well the standard kraken bacterial sequences to build a kraken database (see [07_build_kraken.sh](data/hpc/symbiodinium_profiles/07_build_kraken.sh)) using default values for kmer length (31) and minimiser length (15).
+
+kraken was then used to classify all non host read pairs (paired reads not aligning to the host genome) for all samples and the raw outputs processed with `kraken-mpa-report`.
+
+1. Summarize major symbiont proportion for each file
+```{r}
+# Get all MPA files from the directory
+mpa_dir <- "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/"
+mpa_files <- list.files(mpa_dir, pattern = "\\.txt$", full.names = TRUE)
+
+# Symbiodiniaceae genera of interest
+sym_genera <- c("Symbiodinium", "Breviolum", "Cladocopium",
+                "Durusdinium", "Effrenium", "Fugacium")
+
+# Function to read a given MPA file and compute genus proportions
+read_mpa_symbiodiniaceae <- function(file_path) {
+
+  df_raw <- readr::read_tsv(
+    file_path,
+    col_names = c("taxon", "count"),
+    col_types = "ci",
+    comment = "",
+    quote = ""
+  )
+
+  # Drop species-level rows to avoid double-counting (only a problem for Breviolum and Effrenium)
+  df <- df_raw %>%
+    filter(!str_detect(taxon, "\\|s__"))
+
+  # Extract total # Symbiodiniaceae reads (family-level row)
+  sym_total <- df %>%
+    filter(str_detect(taxon, "f__Symbiodiniaceae$")) %>%
+    pull(count)
+
+  if (length(sym_total) == 0) {
+    stop(paste("No Symbiodiniaceae family-level line found in:", file_path))
+  }
+  sym_total <- sym_total[1]
+
+  # Extract sample name from file name
+  sample_full <- tools::file_path_sans_ext(basename(file_path))  # e.g. "M1-1.k2_mpa_report"
+  sample_id   <- sub("-.*", "", sample_full)                     # e.g. "M1"
+
+  # Extract genus-level counts and proportions (now only genus rows, no species)
+  genus_df <- purrr::map_dfr(sym_genera, function(g) {
+
+    pattern <- paste0("f__Symbiodiniaceae\\|g__", g, "$")
+
+    genus_count <- df %>%
+      filter(str_detect(taxon, pattern)) %>%
+      summarise(count = sum(count)) %>%
+      pull(count)
+
+    if (length(genus_count) == 0) genus_count <- 0L
+
+    tibble(
+      sample_full = sample_full,
+      sample_id   = sample_id,
+      genus       = g,
+      genus_count       = genus_count,
+      genus_prop_of_symbiodiniaceae_total        = genus_count / sym_total,
+      symbiodiniaceae_total = sym_total
+      
+    )
+  })
+
+  genus_df
+}
+
+# Run function for all MPA files
+sym_prop_long <- purrr::map_dfr(mpa_files, read_mpa_symbiodiniaceae)
+
+```
+
+Calculate total reads per sample
+```{r}
+read_mpa_euk_bac_total <- function(file_path) {
+
+  df_raw <- readr::read_tsv(
+    file_path,
+    col_names = c("taxon", "count"),
+    col_types = "ci",
+    comment = "",
+    quote = ""
+  )
+
+  # Extract sample name from file name
+  sample_full <- tools::file_path_sans_ext(basename(file_path))
+  sample_id   <- sub("-.*", "", sample_full)
+
+  # Helper to safely pull a single count (0 if missing)
+  get_count <- function(pattern) {
+    x <- df_raw %>%
+      dplyr::filter(stringr::str_detect(taxon, pattern)) %>%
+      dplyr::summarise(count = sum(count)) %>%
+      dplyr::pull(count)
+    if (length(x) == 0) 0L else as.integer(x)
+  }
+
+  euk_reads <- get_count("^d__Eukaryota$")
+  bac_reads <- get_count("^d__Bacteria$")
+
+  tibble::tibble(
+    sample_full = sample_full,
+    sample_id   = sample_id,
+    eukaryota_total = euk_reads,
+    bacteria_toal  = bac_reads,
+    total_read_count = euk_reads + bac_reads
+  )
+}
+
+# Run for all files
+euk_bac_totals <- purrr::map_dfr(mpa_files, read_mpa_euk_bac_total)
+
+# Attach totals to your Symbiodiniaceae long table
+sym_prop_long <- sym_prop_long %>%
+  dplyr::left_join(euk_bac_totals, by = c("sample_full", "sample_id"))
+```
+
+2. Make a box and whisker plot of major symbiont lineages
+```{r}
+# Set order for symbiont genera in plot
+sym_prop_long$genus <- factor(sym_prop_long$genus, levels = c("Symbiodinium", "Breviolum", "Cladocopium", "Durusdinium", "Effrenium", "Fugacium"))
+
+# Join symbiont proportion data with metadata for mapping by site
+sym_prop_long <- sym_prop_long %>%
+  left_join(meta %>% select(sample_id, site), by = "sample_id")
+
+# Make a boxplot faceted by genus
+p_box <- ggplot(sym_prop_long, aes(x = site, y = genus_prop_of_symbiodiniaceae_total, colour = site)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.7) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    x = "Symbiodiniaceae genus",
+    y = "Proportion of Symbiodiniaceae reads",
+    title = "Proportion of Symbiodiniaceae reads by genus across sites"
+  ) +
+  ylim(0,1) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  facet_grid(~ genus); print(p_box)
+```
+
+
+Make a heatmap of sample-to-sample distance based on proportion of major symbiont lineage
+```{r}
+sym_maj_mat <- sym_prop_long %>% 
+  select(genus, sample_id, genus_prop_of_symbiodiniaceae_total) %>% 
+  # filter(!genus %in% c("Durusdinium", "Breviolum", "Effrenium")) %>%
+  pivot_wider(names_from = sample_id, values_from = genus_prop_of_symbiodiniaceae_total) %>% 
+  as.data.frame()
+
+row.names(sym_maj_mat) <- sym_maj_mat$genus
+
+sym_maj_mat <- sym_maj_mat %>% select(!genus)
+
+sym_maj_mat <- t(sym_maj_mat) #matrix of proportions
+
+sym_maj_mat_dist <- as.matrix( #calculate distance matrix
+  dist(
+    sym_maj_mat
+    )
+  )
+```
+
+Plot as heatmap of dominant clade proportions
+```{r}
+#Order metadata by samples with data
+row.names(meta) <- meta$sample_id
+hm_meta <- meta[row.names(sym_maj_mat), ]
+
+#Make annotation matrix
+hmSite <- dplyr::select(hm_meta, site)
+hm_ann_col <- HeatmapAnnotation(df = hmSite,
+                                col = list(
+                                  site = site.col
+                                  )
+                                ) #make dataframe for column naming
+
+hm_maj_prop <- Heatmap(t(sym_maj_mat),
+              top_annotation = hm_ann_col,
+              col = col_fun_prop,
+              show_row_names = TRUE, 
+              show_column_dend = TRUE,
+              column_names_side = "top",
+              heatmap_legend_param = list(title = "",title_gp = gpar(fontsize = 12)))
+draw(hm_maj_prop)
+```
+Plot as sample-to-sample distance
+```{r}
+hm_maj_dist <- Heatmap(sym_maj_mat_dist,
+              top_annotation = hm_ann_col,
+              col = col_fun_dist,
+              show_row_names = TRUE, 
+              show_column_dend = TRUE,
+              column_names_side = "top",
+              heatmap_legend_param = list(title = "",title_gp = gpar(fontsize = 12)))
+draw(hm_maj_dist)
+```
+
+Generate summary tables
+```{r}
+sym_prop_long %>% 
+  group_by(genus) %>% 
+  summarise("median" = median(genus_prop_of_symbiodiniaceae_total), 
+            "mean" = mean(genus_prop_of_symbiodiniaceae_total), 
+            "sd" = sd(genus_prop_of_symbiodiniaceae_total), 
+            "max" = max(genus_prop_of_symbiodiniaceae_total), 
+            "min" = min(genus_prop_of_symbiodiniaceae_total)
+            ) %>% 
+  arrange(-mean)
+```
+
+Save results
+```{r}
+ggsave(filename = "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clades_boxplot.pdf", plot = p_box, width = 12, height = 7, units = "in")
+
+pdf("1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clades_heatmap.pdf", width = 20, height = 10)
+draw(hm_maj_prop)
+dev.off()
+
+write_csv(sym_prop_long, "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clade_summary.csv")
+```

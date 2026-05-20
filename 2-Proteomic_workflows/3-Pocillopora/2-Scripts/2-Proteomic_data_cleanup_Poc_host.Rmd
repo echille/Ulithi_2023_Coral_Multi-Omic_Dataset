@@ -1,0 +1,575 @@
+---
+title: "Ulithi23 *Pocillopora* Proteomics Analysis Workflow"
+author: "Erin E. Chille"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Proteomics data cleaning and preparation workflow
+
+### Goal:
+
+To prepare and quality check raw proteomic data prior to downstream proteomics analyses (e.g. WGCNA, differential abundance analysis, etc...).
+
+### About:
+
+This workflow uses the "protti: R package for comprehensive data analysis of peptide- and protein-centric bottom-up proteomics data" to to clean up and prepare MS peak spectra data prior to statistical analysis. Please refer to the [manual](https://jpquast.github.io/protti/) for further information. This workflow assumes that you are starting with a table of annotated peptides in DIA-NN format and their MS peak intensities..
+
+## Workspace preparation
+
+This workflow utilizes the TidyProteomics package which includes limma, qvalue, and fgsea as dependencies. The following code will install Tidyproteomics and all required dependencies. For further directions and troubleshooting see <https://github.com/jeffsocal/tidyproteomics?tab=readme-ov-file#installation>
+
+Package installation
+
+```{r}
+# install.packages("protti", dependencies = TRUE)
+```
+
+Clear environment and load package(s)
+```{r, warning=FALSE, echo=FALSE}
+rm(list = ls()) #clear environment
+library(dplyr)
+library(rlang)
+library(protti)
+library(impute)
+library(tidyverse)
+library(janitor)
+library(data.table)
+library(patchwork)
+library(ComplexHeatmap)
+```
+
+### Data reading and preparation
+
+Import data file. File should be in tidy format. For details see [Input Preparation Workflow](https://jpquast.github.io/protti/articles/input_preparation_workflow.html). In short, your data must be in a tabular format (data frame) and have the following data columns". The columns minimally required contain information: sample, condition, intensity, protein ID and the level the intensity is based on (i.e. fragment, precursor, or peptide) if different from protein intensity. Depending on the analysis many more columns can be useful, but they are not required.
+
+```{r}
+load("2-Proteomic_workflows/3-Pocillopora/3-Output/Ulithi23_Pocillopora_host_proteomic_raw_dataset")
+
+dat <- dat.host
+dat$PG.MaxLFQ <- as.numeric(dat$PG.MaxLFQ)
+dat$Q.Value <- as.numeric(dat$Q.Value)
+dat$RT <- as.numeric(dat$RT)
+dat$RT.Start <- as.numeric(dat$RT.Start)
+dat$RT.Stop <- as.numeric(dat$RT.Stop)
+
+str(dat)
+```
+
+How many protein groups and samples do we have initially?
+```{r}
+n_distinct(dat$Protein.Group)
+n_distinct(dat$sample_id)
+```
+
+**Keep only high-confidence reads.**
+
+We only care about the high intensity reads, so we will just make our assessment based on those.
+
+First, we will filter by [posterior error probability]{.underline} ("PEP"\< 0.01), which is an estimate of the likelihood that a peptide-spectrum match (PSM) is incorrect, and is informed by neural network scores. We will also filter for a [protein group q-value]{.underline} ("PG.Q.Value"<0.01), which is essentially the minimum false discovery rate (FDR) at which a protein will appear in a filtered output list. These filtering metrics are typically done by the Rutgers Core Facility to make the final Excel report they give us, but since we asked for the raw abundance matrix (DIA file), we need to redo it. We will also filter for precursor quantities greater than 1. Proteins with precursor quanities less then 1 are probably erroneous.
+
+```{r}
+dat <- filter(dat, PEP < 0.01 & Q.Value < 0.01 & Precursor.Quantity > 1 & PG.MaxLFQ > 0) #Filter settings applied by core facility
+```
+
+How many now?
+```{r}
+n_distinct(dat$Protein.Group)
+n_distinct(dat$sample_id)
+```
+
+## Initial quality check
+
+Before we filter anything, we will check the metrics below. We will do this again post-cleaning to compare.
+
+**QC Metrics:**
+
+-   Coefficients of variation
+-   Number of IDs
+-   Run intensity
+-   Charge state
+-   Peptide type
+-   Sequence coverage
+-   Peak width
+-   Completeness
+-   Log2Intensity
+-   Sample correlation
+-   PCA
+-   Ranked intensity
+
+
+Some of these QCs will need log2 intensity and others with require raw intensity, we have raw intensity already so we need to add a column with log2 intensity. We will also median-normalize our log2 intensities, which will equal out small differences in overall sample intensities that result from unequal sample concentrations.
+
+```{r}
+dat <- mutate(dat, intensity_log2 = log2(PG.MaxLFQ)) %>%
+  protti::normalise(sample = sample_id,
+                    intensity_log2 = intensity_log2,
+                    method = "median")
+```
+
+We also want to filter out very low intensity values that are not part of the distribution. These values are likely false assignments of peaks. **This will depend on the spread of your data.**. These will become NAs and will eventually be imputed as missing values.
+
+Before removing low count cells - ALL
+```{r}
+#Data spread
+qc_intensity_distribution(data = dat,
+  sample = sample_id,                        
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  plot_style = "violin")
+
+#Log2Intensity
+qc_intensity_distribution(
+  data = dat,
+  grouping = Protein.Group,
+  intensity_log2 = normalised_intensity_log2,
+  plot_style = "histogram"
+)
+```
+
+Remove low count cells. DID NOT DO BECAUSE THERE IS A NORMAL DISTRIBUTION.
+```{r}
+# dat_filt <- filter(dat, normalised_intensity_log2 > 1)
+# n_distinct(dat$Protein.Group); n_distinct(dat_filt$Protein.Group)
+# dat <- dat_filt
+```
+
+After removing low-count cells
+```{r}
+#view distribution
+pre1 <- qc_intensity_distribution(
+  data = dat,
+  grouping = Protein.Group,
+  intensity_log2 = normalised_intensity_log2,
+  plot_style = "histogram"
+); pre1
+
+#Data spread
+pre2 <- qc_intensity_distribution(data = dat,
+  sample = sample_id,                        
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  plot_style = "violin"); pre2
+```
+
+Run metrics
+```{r}
+#Peak width
+qc_peak_width(
+  data = dat,
+  sample = sample_id,
+  intensity = PG.MaxLFQ,
+  retention_time = RT,
+  retention_time_start = RT.Start,
+  retention_time_end = RT.Stop,
+  interactive = F
+)
+
+#Completeness
+pre3 <- qc_data_completeness(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = PG.MaxLFQ,
+  plot = F
+) %>% arrange(completeness); pre3
+```
+
+Identification QC
+
+```{r}
+#Number of IDs
+pre4 <- qc_ids(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = PG.MaxLFQ,
+  condition = site,
+  title = "Protein identifications per sample",
+  plot = TRUE
+); pre4
+
+#Charge state
+qc_charge_states(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  charge_states = Precursor.Charge,
+  method = "intensity",
+  intensity = PG.MaxLFQ,
+  plot = TRUE
+)
+```
+
+Metadata QC
+```{r}
+#Coefficients of variation
+qc_cvs(data = dat,
+  grouping = Protein.Group,
+  condition = site,
+  intensity = PG.MaxLFQ,
+  plot = TRUE,
+  plot_style = "violin")
+
+#Sample correlation
+qc_sample_correlation(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity_log2 = normalised_intensity_log2,
+  condition = site,
+  interactive = TRUE
+)
+
+pre5 <- qc_pca(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  condition = site,
+  components = c("PC1", "PC2"),
+  plot_style = "pca"
+); pre5
+
+#PCA
+pre6 <- qc_pca(
+  data = dat,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  condition = site,
+  digestion = NULL,
+  plot_style = "scree"
+); pre6
+```
+
+## Filter data for quality
+
+### Remove outlier samples
+
+We will remove outlier samples based on our heatmap and dendrogram plot.
+
+Some samples had extremely high missingness indicating they didn't run correctly.
+```{r}
+# outliers <- c("M26.1", "M34", "M35", "M36", "M37", "M100")
+# dat_samples_keep <- filter(dat, !sample_id%in%outliers)
+
+dat_samples_keep <- dat #no outliers removed
+```
+
+## Filter data for quality
+Finally, we will filter out highly variable proteins. Those proteins with <40% missingness in at least 1 treatment will be considered missing not at random (MNAR), and therefore will be retained for missing value imputation.
+
+Get data into the correct format
+```{r}
+pdat_clean_long <- unique(subset(dat_samples_keep, select = c("sample_id", "Protein.Group", "PG.MaxLFQ")))
+
+pdat_clean_wide <- pivot_wider(pdat_clean_long, id_cols = "Protein.Group", names_from = "sample_id", values_from = "PG.MaxLFQ")
+```
+
+How many missing values do we have total?
+```{r}
+sum(is.na(pdat_clean_wide))
+(sum(is.na(pdat_clean_wide)))/(nrow(pdat_clean_wide)*ncol(pdat_clean_wide))*100 #percent missing values
+```
+
+Use a funciton to calculate missingness per factor level with this time the factor level being site
+```{r}
+compute_missingness_by_factor <- function(
+  samp,
+  pdat_clean_wide,
+  sample_id_col,   # bare column name in samp, e.g. sample_id
+  factor_col,      # bare column name in samp, e.g. site
+  id_col = "Protein.Group"
+) {
+  sample_id_col <- enquo(sample_id_col)
+  factor_col    <- enquo(factor_col)
+
+  if (!is.data.frame(pdat_clean_wide)) {
+    stop("pdat_clean_wide must be a data.frame with an ID column (e.g., Protein.Group) and sample columns.")
+  }
+  if (!id_col %in% colnames(pdat_clean_wide)) {
+    stop(paste0("Couldn't find id_col = '", id_col, "' in pdat_clean_wide."))
+  }
+
+  # build sample-id sets by factor level
+  sample_sets <- samp %>%
+    filter(!is.na(!!factor_col)) %>%
+    group_by(!!factor_col) %>%
+    summarise(sample_ids = list(as.character(!!sample_id_col)), .groups = "drop")
+
+  missingness_list <- lapply(seq_len(nrow(sample_sets)), function(i) {
+    samples_raw <- sample_sets$sample_ids[[i]]
+    samples <- intersect(samples_raw, colnames(pdat_clean_wide))
+
+    if (length(samples) == 0) {
+      return(rep(NA_real_, nrow(pdat_clean_wide)))
+    }
+
+    # percent missing per protein within the factor level
+    rowMeans(is.na(pdat_clean_wide[, samples, drop = FALSE])) * 100
+  })
+
+  out <- data.frame(
+    Protein.Group = pdat_clean_wide[[id_col]],
+    missingness_list,
+    check.names = FALSE
+  )
+
+  level_vals <- as.character(sample_sets[[as_name(factor_col)]])
+  colnames(out)[-1] <- paste0("Missingness_", level_vals)
+
+  out
+}
+```
+
+Now calculate missingness for all sites
+```{r}
+samp <- dat_samples_keep %>% dplyr::select(sample_id, site) %>% unique()
+samp$site <- as.factor(samp$site)
+
+missing_data_frame <- compute_missingness_by_factor(samp = samp, pdat_clean_wide = pdat_clean_wide, sample_id_col = sample_id, factor_col = site)
+head(missing_data_frame)
+
+#Make df for plotting
+mdf <- missing_data_frame
+rownames(mdf) <- mdf$Protein.Group
+mdf <- mdf %>% select(!Protein.Group)
+hist(as.matrix(mdf))
+```
+
+View missingness as heatmap
+```{r}
+hm_d2s_dist <- Heatmap(mdf,
+              show_row_names = FALSE, 
+              show_column_dend = TRUE,
+              column_names_side = "top",
+              heatmap_legend_param = list(title = "",title_gp = gpar(fontsize = 12)))
+draw(hm_d2s_dist)
+```
+
+Set a missing value filtering threshold. Based on the heatmap and histograms, I chose 70%.
+```{r}
+mdf$MNAR <- rowSums(mdf < 40, na.rm = TRUE) > 3
+mdf$MNAR <- rowSums(mdf < 40, na.rm = TRUE) > 3
+table(mdf$MNAR)
+
+
+#Make vector of proteins to filter
+MNAR <- filter(mdf, MNAR==TRUE)
+
+#Plot again
+hm_d2s_dist_clean <- Heatmap(MNAR[,-4],
+              show_row_names = FALSE, 
+              show_column_dend = TRUE,
+              column_names_side = "top",
+              heatmap_legend_param = list(title = "",title_gp = gpar(fontsize = 12)))
+draw(hm_d2s_dist_clean)
+```
+
+Filter out missing proteins
+```{r}
+#Make vector of proteins to filter
+MAR <- filter(mdf, MNAR==FALSE)
+
+#Filter out proteins
+pdat_clean_wide_miss <- filter(pdat_clean_wide, !Protein.Group%in%rownames(MAR))
+
+#check number filtered
+nrow(pdat_clean_wide) - nrow(pdat_clean_wide_miss) #number removed
+
+#check total proteins
+nrow(pdat_clean_wide_miss)
+```
+
+How many missing values do we have now?
+```{r}
+sum(is.na(pdat_clean_wide_miss))
+(sum(is.na(pdat_clean_wide_miss)))/(nrow(pdat_clean_wide_miss)*ncol(pdat_clean_wide_miss))*100 #n missing values
+```
+
+## Missing value imputation
+
+Next, we will use the ```missForest``` function to impute missing values
+It should be noted that when data is imputed this can lead to invalid inferential conclusions due to underestimating statistical uncertainty or it can cause loss of statistical power. Therefore, it is not recommended to use a moderated t-test or the proDA algorithm after imputation.
+```{r}
+set.seed(124)
+pdat_clean_wide_mf <- pdat_clean_wide_miss %>% select(!Protein.Group) #remove protein name
+pdat_clean_wide_mf <- as.matrix(pdat_clean_wide_mf)
+row.names(pdat_clean_wide_mf) <- pdat_clean_wide_miss$Protein.Group
+sum(is.na(pdat_clean_wide_mf)) #n missing values
+sum(pdat_clean_wide_mf=0)  #n 0 values
+
+pdat_clean_imputed <- missForest::missForest(pdat_clean_wide_mf)
+
+pdat_final <- as.data.frame(pdat_clean_imputed$ximp)
+pdat_final$Protein.Group <- rownames(pdat_final)
+
+sum(is.na(pdat_final)) #n missing values. should be zero.
+sum(pdat_final=0) #n 0 values. should be zero.
+```
+
+Add imputed values into long version of df
+```{r}
+pdat_final_long <- pivot_longer(pdat_final, cols = -ncol(pdat_final), names_to = "sample_id",  values_to = "PG.MaxLFQ")
+```
+
+How many now?
+```{r}
+n_distinct(pdat_final_long$Protein.Group)
+n_distinct(pdat_final_long$sample_id)
+```
+
+Add sample info
+```{r}
+sdat <- dat %>% dplyr::select(sample_id, sample_id, batch, order, date, site, jurisdiction, habitat, reef_type, reef_state, latitude, longitude,  inhabited_within_10km) %>% distinct()
+pdat_final_long <- left_join(pdat_final_long, sdat, by = "sample_id")
+```
+
+##Log scale and normalize
+```{r}
+pdat_final_long <- pdat_final_long %>% mutate(intensity_log2 = log(PG.MaxLFQ, 2))
+pdat_final_long <- pdat_final_long %>% 
+  protti::normalise(sample = sample_id,
+                    intensity_log2 = intensity_log2,
+                    method = "median")
+```
+
+## Post-cleaning QC
+
+Run metrics
+```{r}
+#Data spread
+post1 <- qc_intensity_distribution(data = pdat_final_long,
+  sample = sample_id,                        
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  plot_style = "violin"); post1
+
+#Log2Intensity
+post2 <- qc_intensity_distribution(
+  data = pdat_final_long,
+  grouping = Protein.Group,
+  intensity_log2 = normalised_intensity_log2,
+  plot_style = "histogram"
+); post2
+
+#Completeness
+qc_data_completeness(
+  data = pdat_final_long,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  plot = TRUE
+)
+```
+
+Identification QC
+```{r}
+#Number of IDs
+qc_ids(
+  data = pdat_final_long,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  condition = site,
+  title = "Protein identifications per sample",
+  plot = TRUE
+)
+```
+Metadata QC
+```{r}
+#PCA
+post3 <- qc_pca(
+  data = pdat_final_long,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  condition = site,
+  components = c("PC1", "PC2"),
+  plot_style = "pca"
+); post3
+
+post4 <- qc_pca(
+  data = pdat_final_long,
+  sample = sample_id,
+  grouping = Protein.Group,
+  intensity = normalised_intensity_log2,
+  condition = site,
+  digestion = NULL,
+  plot_style = "scree"
+); post4
+```
+
+Run intensity distribution
+```{r}
+dist <- pdat_final_long %>% 
+  ggplot(aes(x = sample_id, y = normalised_intensity_log2, colour = site)) + 
+  ylab("Log2 Intensity") + xlab("site") + #Label axes
+  #ylim(0,0.13)+
+  geom_point(position = position_dodge(width = 0.9)) +
+  geom_boxplot(alpha = 0) +
+  theme_bw() + #Set background color
+  #scale_color_manual(values = c("lightblue", "red3")) + #colour modification + #set treatment colors
+  ggtitle("Host - Median Normalized") + #add a main title
+  theme(#panel.border = element_blank(), # Set border
+    panel.grid.minor = element_blank(), #Set minor gridlines
+    axis.text.x=element_text(angle = 45, vjust = 1, hjust=1), #Set Y tick label size
+    plot.background=element_blank()) + #Set the plot background
+  theme(plot.title = element_text(face = 'bold', 
+                                  size = 12, 
+                                  hjust = 0)); dist
+```
+
+## Save all the data
+
+Pre-cleaning plots
+```{r}
+pdf("3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_precleaning_plots_Poc.pdf", width = 11, height = 10)
+pre1 / pre2 / pre5
+dev.off()
+```
+
+Data completeness
+```{r}
+write_csv(pre3, "3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_completeness_Poc.csv")
+```
+
+Post-cleaning plots
+```{r}
+pdf("3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_postcleaning_plots_Poc.pdf", width = 11, height = 10)
+post2 / post1 / post3
+dev.off()
+```
+
+Missingness plots
+```{r}
+pdf("3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_missingness_pre_plots_Poc.pdf", width = 11, height = 7)
+draw(hm_d2s_dist)
+dev.off()
+
+pdf("3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_missingness_post_plots_Poc.pdf", width = 11, height = 7)
+draw(hm_d2s_dist_clean)
+dev.off()
+```
+Cleaning plot summary
+```{r}
+pdf("3-Proteomic_analysis/3_Output/2-Pocillopora/1_Proteomic_cleanup/Ulithi23_proteomic_cleaning_summary_plots_Poc.pdf", width = 21, height = 10)
+(pre1 + post2) / (pre2 + post1) / (pre5 + post3)
+dev.off()
+```
+
+Make final expression matrix
+```{r}
+pdat_final <- pdat_final_long %>% dplyr::select(sample_id, Protein.Group, normalised_intensity_log2) %>% pivot_wider(id_cols = Protein.Group, names_from = sample_id, values_from = normalised_intensity_log2)
+```
+
+Write final cleaned matrix to csv
+```{r}
+write_csv(pdat_final, "2-Proteomic_workflows/3-Pocillopora/3-Output/Ulithi23_Pocillopora_proteomic_cleaned_abundance_matrix.csv", col_names = T)
+save(pdat_final_long, file = "2-Proteomic_workflows/3-Pocillopora/3-Output/Ulithi23_Pocillopora_host_proteomic_clean_dataset")
+```

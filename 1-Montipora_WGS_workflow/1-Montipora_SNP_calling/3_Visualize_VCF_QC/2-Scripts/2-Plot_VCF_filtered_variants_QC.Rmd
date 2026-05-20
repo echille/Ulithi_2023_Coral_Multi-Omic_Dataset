@@ -30,19 +30,22 @@ knitr::opts_chunk$set(echo = TRUE,
                       dpi = 1000)
 library(tidyverse)
 options(scipen = 999) #Prevent scientific notation
+
+in_path <- c("1-Montipora_WGS_workflow/1-Montipora_SNP_calling/3_Visualize_VCF_QC/1-Input/2-Filtered_VCF_stats/")
+out_path <- c("1-Montipora_WGS_workflow/1-Montipora_SNP_calling/3_Visualize_VCF_QC/3-Output/2-Filtered_VCF_stats/")
 ```
 
 
 # Variant based statistics
 
 ```{r vars, echo=FALSE, message=FALSE}
-var_qual.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.gz"
-var_ldepth.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.subset.vcf.ldepth.gz"
-var_lmiss.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.gz"
-var_freq.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.gz"
-ind_idepth.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.subset.vcf.idepth.gz"
-ind_imiss.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.subset.vcf.imiss.gz"
-ind_het.file <- "5-Mcapitata-genotyping/1-Data/2-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.het.gz"
+var_qual.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.gz")
+var_ldepth.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.subset.vcf.ldepth.gz")
+var_lmiss.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.gz")
+var_freq.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.gz")
+ind_idepth.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.subset.vcf.idepth.txt")
+ind_imiss.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.subset.vcf.imiss.txt")
+ind_het.file <- file.path(in_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.het.gz")
 
 var_qual.min  <- 30
 var_depth.min <- 10
@@ -74,11 +77,11 @@ var_qual.inset.plot <- var_qual %>%
   geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) +
   theme_light(); var_qual.inset.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lqual.pdf"), height = 20, width = 20)
 var_qual.plot
 dev.off()
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.lqual.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.inset.lqual.pdf"), height = 20, width = 20)
 var_qual.inset.plot
 dev.off()
 ```
@@ -103,7 +106,7 @@ var_ldepth.plot <- var_ldepth %>%
   geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
   geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_ldepth.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.ldepth.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.ldepth.pdf"), height = 20, width = 20)
 var_ldepth.plot
 dev.off()
 ```
@@ -125,7 +128,7 @@ var_lmiss.plot <- var_lmiss %>%
   theme_light() +
   geom_vline(xintercept = var_lmiss.min, color = "red", size=1.0); var_lmiss.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.lmiss.pdf"), height = 20, width = 20)
 var_lmiss.plot
 dev.off()
 ```
@@ -156,7 +159,7 @@ var_freq.plot <- var_freq %>%
   geom_vline(xintercept = var_freq.min, color = "red", size=1.0); var_freq.plot
 
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.frq.pdf"), height = 20, width = 20)
 var_freq.plot
 dev.off()
 ```
@@ -182,7 +185,7 @@ var_idepth.plot <- var_idepth %>%
   geom_vline(xintercept = var_depth.min, color = "red", size=1.0) +
   geom_vline(xintercept = var_depth.max, color = "red", size=1.0); var_idepth.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.idepth.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.idepth.pdf"), height = 20, width = 20)
 var_idepth.plot
 dev.off()
 ```
@@ -203,7 +206,7 @@ var_imiss.plot <- var_imiss %>%
   theme_light() +
   geom_vline(xintercept = var_lmiss.min, color = "red", size=1.0); var_imiss.plot
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.imiss.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.imiss.pdf"), height = 20, width = 20)
 var_imiss.plot
 dev.off()
 ```
@@ -227,7 +230,7 @@ ind_het.plot <- ind_het %>%
 
 summary(ind_het$F)
 
-pdf("5-Mcapitata-genotyping/3-Output/3-Filtered_VCF_stats/Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.het.pdf", height = 20, width = 20)
+pdf(file.path(out_path, "Ulithi23_ULFMv1.pop.allsites.variant_sites.vcf.filt.het.pdf"), height = 20, width = 20)
 ind_het.plot
 dev.off()
 ```

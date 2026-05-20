@@ -1,5 +1,5 @@
 ---
-title: "Ulithi23 *Montipora* Metabolomics Analysis Workflow"
+title: "Ulithi23 *Pocillopora* Metabolomics Analysis Workflow"
 author: "Gabby Panayotakis"
 date: "2025-01-06"
 output: html_document
@@ -44,7 +44,6 @@ This workflow utilizes the TidyMass package which includes tidyR and ggplot as d
 #  remotes::install_gitlab("tidymass/tidymass")
 ```
 
-
 Clear environment and load package(s)
 
 ```{r, warning=FALSE}
@@ -55,7 +54,6 @@ library(readr)
 library(dplyr)
 library(ggplotify)
 library(hexbin)
-library(readr)
 ```
 
 ### Input Files Preparation
@@ -72,37 +70,25 @@ This workflow requires [three files for each ionization mode]{.underline}:
 
 Note that your [sample IDs must match exactly across all files]{.underline} and [sample_info must match the compound ID in the associated expression data table]{.underline}.
 
-**sample_info:** The columns `sample_id` (sample ID), `injection.order` (injection order of samples), `class` (Blank, QC, Subject, etc), and `batch` (batch number) are required.
-
-**variable_info:** The columns `variable_id` (variable ID), `mz` (mass to charge ratio), `rt` (retention time, units are in seconds) are required.
-
-**expression_data:** The columns `variable_id` (compound ID), `mz` (mass to charge ratio), `rt` (retention time, units are in seconds), and your expression data (where column names are your sample IDs) are required. Other compound information (e.g. isotope distribution) may also be included, but is not required.
-
-**sample_groups:** The columns `sample_id` (sample ID) and `group` (control, treatment1, treatment2, etc) are required.
-
-
-### Load Prepared CSV Files & Extract Datasets
-
 Path to input files
 ```{r}
-in_path <- "3-Metabolomic_workflow/1-Montipora/1-Input"
+in_path <- "3-Metabolomic_workflow/3-Pocillopora/1-Input"
 ```
 
 ```{r}
-peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_expression_data.csv"))
-peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_expression_data.csv"))
+peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_poci_pos_expression_data.csv"))
+peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_poci_neg_expression_data.csv"))
 
-sample_info_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_sample_info.csv"))
-sample_info_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_sample_info.csv"))
+sample_info_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_poci_pos_sample_info.csv"))
+sample_info_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_poci_neg_sample_info.csv"))
 
-sample_groups_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_sample_groups.csv"))
-sample_groups_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_sample_groups.csv"))
+sample_groups_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_poci_pos_sample_groups.csv"))
+sample_groups_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_poci_neg_sample_groups.csv"))
 
 #Add sample group information to sample info
 sample_info_pos <- left_join(sample_info_pos, sample_groups_pos, by="sample_id")
 sample_info_neg <- left_join(sample_info_neg, sample_groups_neg, by="sample_id")
 ```
-
 
 Variable (metabolite) information (e.g. mass-to-charge ration ("mz"), retention time ("rt), isotope distribution ("isotope.dist")) and expression data are in the peak tables, so we have to separate them
 
@@ -342,10 +328,10 @@ Create a report of raw data quality. Save as HTML. It is recommended to review t
 ```{r}
 # object_pos@sample_info$class <- gsub("Sample", "Subject", object_pos@sample_info$class)
 # massqc::massqc_report(object = object_pos,
-#                       path = "3-Metabolomic_workflow/1-Montipora/3-Output/Pos_data_quality_pre_cleanup")
+#                       path = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Pos_data_quality_pre_cleanup")
 # object_neg@sample_info$class <- gsub("Sample", "Subject", object_neg@sample_info$class)
 # massqc::massqc_report(object = object_neg,
-#                       path = "3-Metabolomic_workflow/1-Montipora/3-Output/Neg_data_quality_pre_cleanup")
+#                       path = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Neg_data_quality_pre_cleanup")
 ```
 
 ### Filter out noisy metabolites
@@ -366,7 +352,7 @@ show_variable_missing_values(object = object_pos %>%
 
 The standard method of applying the 80% rule
 ```{r}
-MV.lim = 0.85 #standard missing value threshold for Montipora
+MV.lim = 0.8 #standard missing value threshold for both datasets
 
 nfeatures_before <- nrow(extract_variable_info(object_pos))
 
@@ -410,7 +396,7 @@ show_variable_missing_values(object = object_neg %>%
 
 The standard method of applying the 80% rule
 ```{r}
-MV.lim = 0.85 #standard missing value threshold for Montipora
+MV.lim = 0.8 #standard missing value threshold for both datasets
 
 nfeatures_before <- nrow(extract_variable_info(object_neg))
 
@@ -444,11 +430,11 @@ show_variable_missing_values(object = object_neg %>%
 
 ### Identify and remove outlier samples
 
+#### Positive
+
 [Outlier detection]{.underline}
 
 Visualize the samples
-
-Positive
 ```{r}
 massdataset::show_sample_missing_values(object = object_pos,
                                         color_by = "group",
@@ -459,22 +445,7 @@ massdataset::show_sample_missing_values(object = object_pos,
   ggsci::scale_color_aaas()
 
 ```
-Negative
-```{r}
-massdataset::show_sample_missing_values(object = object_neg,
-                                        color_by = "group",
-                                        order_by = "injection.order",
-                                        percentage = TRUE) +
-  theme(axis.text.x = element_text(size = 2)) +
-  scale_size_continuous(range = c(0.1, 2)) +
-  ggsci::scale_color_aaas()
-
-```
-
-
-Detect outliers in samples
-
-Positive
+Detect outlier samples
 ```{r}
 outlier_samples_pos =
   object_pos %>%
@@ -494,49 +465,20 @@ outlier_table_pos <- extract_outlier_table(outlier_samples_pos) %>%
 outlier_table_pos
 ```
 
-11 positive outliers detected. (need to be identified in 2/4 of the tidymass tests)
-
-Negative
-```{r}
-outlier_samples_neg =
-  object_neg %>%
-  `+`(1) %>% 
-  log(2) %>%
-  scale() %>%
-  detect_outlier(); outlier_samples_neg
-```
-
-```{r}
-outlier_table_neg <- extract_outlier_table(outlier_samples_neg) %>%
-  apply(1, function(x){
-    sum(x)
-  }) %>%
-  `>`(0) %>%
-  which()
-outlier_table_neg
-```
-
+No positive outliers detected. (need to be identified in 2/4 of the tidymass tests)
 
 [Outlier removal]{.underline}
 
-If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. 
+If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
 
 Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
-
-Positive:
-We detected 11 samples as outliers in the positive ionization, so we will remove them from both datasets.
-
-Negative:
-We detected no samples as outliers in the negative ionization.
-
-[Remove from Positive Dataset]{.underline}
 
 ```{r}
 nrow(extract_sample_info(object_pos)) #number of samples before
 
-object_pos <- object_pos %>%
-  activate_mass_dataset(what = "sample_info") %>%
-  filter(!sample_id%in%names(outlier_table_pos))
+# object_pos <- object_pos %>%
+#   activate_mass_dataset(what = "sample_info") %>%
+#   filter(!sample_id%in%names(outlier_list_pos))
 
 nrow(extract_sample_info(object_pos)) #number of samples after
 ```
@@ -560,16 +502,72 @@ ggplot(data = pos_pca, aes_string(x = "PC1", y = "PC2")) +
   coord_fixed() 
 ```
 
-[Remove from Negative Dataset]{.underline}
+#### Negative
+
+[Outlier detection]{.underline}
+
+Visualize the samples
+```{r}
+massdataset::show_sample_missing_values(object = object_neg,
+                                        color_by = "group",
+                                        order_by = "injection.order",
+                                        percentage = TRUE) +
+  theme(axis.text.x = element_text(size = 2)) +
+  scale_size_continuous(range = c(0.1, 2)) +
+  ggsci::scale_color_aaas()
+
+```
+
+Detect outlier samples
+```{r}
+outlier_samples_neg =
+  object_neg %>%
+  `+`(1) %>% 
+  log(2) %>%
+  scale() %>%
+  detect_outlier(); outlier_samples_neg
+```
+
+```{r}
+outlier_table_neg <- extract_outlier_table(outlier_samples_neg) %>%
+  apply(1, function(x){
+    sum(x)
+  }) %>%
+  `>`(0) %>%
+  which()
+outlier_table_neg
+```
+
+No Negative outliers detected. (need to be identified in 2/4 of the tidymass tests)
+
+[Outlier removal]{.underline}
+
+If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
+
+Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
+
 ```{r}
 nrow(extract_sample_info(object_neg)) #number of samples before
 
-object_neg <- object_neg %>%
-  activate_mass_dataset(what = "sample_info") %>%
-  filter(!sample_id%in%names(outlier_table_pos))
+# object_neg <- object_neg %>%
+#   activate_mass_dataset(what = "sample_info") %>%
+#   filter(!sample_id%in%names(outlier_list_neg))
 
 nrow(extract_sample_info(object_neg)) #number of samples after
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
 Check the results of removing outliers
 ```{r}
 neg_exp_mat <- extract_expression_data(object_neg)
@@ -593,19 +591,29 @@ ggplot(data = neg_pca, aes_string(x = "PC1", y = "PC2")) +
 
 ```{r}
 show_sample_missing_values(object = object_pos, percentage = TRUE)
+x.axis.order <- c("P203", "P210", "P201", "P16", "P12", "P208", "P13", "P11", "P19", "P20", "P205", "P204", "P209", "M70", "P202", "P206", "P207", "M69", "M66", "M67", "M68", "P14", "P15", "P18")
 
 MVplot.pos <- show_sample_missing_values(object = object_pos, 
                                          percentage = TRUE)
-ggsave("3-Metabolomic_workflow/1-Montipora/3-Output/MVplot_pos_before_imputation_montipora.pdf", plot = MVplot.pos, width = 9.1, height = 7, units = "in")
-```
+MVplot.pos.ordered <- MVplot.pos +  scale_x_discrete(limits = x.axis.order)
 
+print(MVplot.pos.ordered)
+
+ggsave("3-Metabolomic_workflow/3-Pocillopora/3-Output/MVplot_pos_before_imputation_pocillopora.pdf", plot = MVplot.pos.ordered, width = 9.1, height = 7, units = "in")
+```
 ```{r}
 show_sample_missing_values(object = object_neg, percentage = TRUE)
+x.axis.order <- c("P203", "P210", "P201", "P16", "P12", "P208", "P13", "P11", "P19", "P20", "P205", "P204", "P209", "M70", "P202", "P206", "P207", "M69", "M66", "M67", "M68", "P14", "P15", "P18")
 
 MVplot.neg <- show_sample_missing_values(object = object_neg, 
                                          percentage = TRUE)
-ggsave("3-Metabolomic_workflow/1-Montipora/3-Output/MVplot_neg_before_imputation_montipora.pdf", plot = MVplot.neg, width = 9.1, height = 7, units = "in")
+MVplot.neg.ordered <- MVplot.neg +  scale_x_discrete(limits = x.axis.order)
+
+print(MVplot.neg.ordered)
+
+ggsave("3-Metabolomic_workflow/3-Pocillopora/3-Output/MVplot_neg_before_imputation_pocillopora.pdf", plot = MVplot.neg.ordered, width = 9.1, height = 7, units = "in")
 ```
+
 
 ### Missing value imputation
 
@@ -615,7 +623,8 @@ Here, we use the random forest method to impute missing values for our two datas
 ```{r}
 get_mv_number(object_pos)
 
-object_pos <- impute_mv(object = object_pos, method = "rf")
+object_pos <- 
+  impute_mv(object = object_pos, method = "rf")
 
 get_mv_number(object_pos)
 ```
@@ -723,7 +732,7 @@ pos_plot <- object_pos2 %>%
 Create a report of raw data quality. Save as HTML.
 
 ```{r, echo=F}
-# massqc::massqc_report(object = object_pos2, path = "3-Metabolomic_workflow/1-Montipora/3-Output/Pos_data_quality_post_cleanup")
+# massqc::massqc_report(object = object_pos2, path = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Pos_data_quality_post_cleanup")
 ```
 
 #### Negative
@@ -776,8 +785,9 @@ neg_plot <- object_neg2 %>%
 Create a report of raw data quality. Save as HTML.
 
 ```{r, echo=F}
-# massqc::massqc_report(object = object_neg2, path = "3-Metabolomic_workflow/1-Montipora/3-Output/Neg_data_quality_post_cleanup")
+# massqc::massqc_report(object = object_neg2, path = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Neg_data_quality_post_cleanup")
 ```
+
 
 ## Technical variable correction
 
@@ -865,12 +875,12 @@ object_neg3 =
 ## Save Clean Data
 
 ```{r}
-save(object_pos3, file = "3-Metabolomic_workflow/1-Montipora/3-Output/Tidymass_clean_pos_massdataset_Mon")
-save(object_neg3, file = "3-Metabolomic_workflow/1-Montipora/3-Output/Tidymass_clean_neg_massdataset_Mon")
+save(object_pos3, file = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Tidymass_clean_pos_massdataset_Poc")
+save(object_neg3, file = "3-Metabolomic_workflow/3-Pocillopora/3-Output/Tidymass_clean_neg_massdataset_Poc")
 
 #to load into the next session,
-# load("3-Metabolomic_workflow/1-Montipora/3-Output/Tidymass_clean_pos_massdataset_Mon")
-# load("3-Metabolomic_workflow/1-Montipora/3-Output/Tidymass_clean_neg_massdataset_Mon")
+# load("3-Metabolomic_workflow/3-Pocillopora/3-Output/Tidymass_clean_pos_massdataset_Poc")
+# load("3-Metabolomic_workflow/3-Pocillopora/3-Output/Tidymass_clean_neg_massdataset_Poc")
 ```
 
 

@@ -1,5 +1,5 @@
 ---
-title: "U23_datacleaning_acrop"
+title: "Ulithi23 *Acropora* Metabolomics Analysis Workflow"
 author: "Gabby Panayotakis"
 date: "2025-01-06"
 output: html_document
@@ -878,4 +878,9 @@ object_neg3 =
 ```{r}
 save(object_pos3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acr")
 save(object_neg3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acr")
+
+
+#to load into the next session,
+# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acr")
+# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acr")
 ```

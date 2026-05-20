@@ -283,11 +283,11 @@ sym_prop_long %>%
 
 Save results
 ```{r}
-ggsave(filename = "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clades_boxplot.pdf", plot = p_box, width = 12, height = 7, units = "in")
+ggsave(filename = "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/3-Output/1_Major_symbiont_clades_boxplot.pdf", plot = p_box, width = 12, height = 7, units = "in")
 
-pdf("1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clades_heatmap.pdf", width = 20, height = 10)
+pdf("1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/3-Output/1_Major_symbiont_clades_heatmap.pdf", width = 20, height = 10)
 draw(hm_maj_prop)
 dev.off()
 
-write_csv(sym_prop_long, "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/1-Input/1_Major_symbiont_clade_summary.csv")
+write_csv(sym_prop_long, "1-Montipora_WGS_workflow/2-Symbiont_composition/2-Visualize_results/3-Output/1_Major_symbiont_clade_summary.csv")
 ```

@@ -1,20 +1,19 @@
 # Multi-omics data of a weedy coral species from Ulithi Atoll (Micronesia) to investigate the impact of human disturbance on coral health and resilience
 
-[DOI]()
+Erin E. Chille 1 , Gabriella M. Panayotakis 1 , Timothy G. Stephens 1 , Michelle Paddack 2,3 , Nicole L. Crane 2,4 , Giacomo Bernardi 2,5 , John Rulmal, Jr. 2,6 , Debashish Bhattacharya 1,*
 
-Erin E. Chille 1 , Gabriella M. Panayotakis 1 , Timothy G. Stephens 1 , Michelle Paddack 2,3 , Nicole L. Crane 2,4,5 , Giacomo Bernardi 2,6 , John Rulmal, Jr. 2,7 , Debashish Bhattacharya 1,*
-
-1 Department of Biochemistry and Microbiology, Rutgers University, New Brunswick, New Jersey, 08901, USA
-2 One People One Reef, Santa Cruz, California, United States of America,
-3 Santa Barbara City College, Santa Barbara, California, United States of America
-4 Department of Biology, Cabrillo College, Aptos, California, United States of America
-5 Oceanic Society, Ross, California, United States of America
-6 Department of Ecology and Evolutionary Biology, University of California, Santa Cruz, California, United States of America
-7 Ulithi Falalop Community Action Program, Yap, Federated States of Micronesia
+1 Department of Biochemistry and Microbiology, Rutgers University, New Brunswick, New Jersey, 08901, USA  
+2 One People One Reef, Santa Cruz, California, USA  
+3 Santa Barbara City College, Santa Barbara, California, USA  
+4 David H. Smith Conservation Research Fellowship, Society for Conservation Biology, Washington, DC, USA  
+5 Department of Ecology and Evolutionary Biology, University of California, Santa Cruz, California, USA  
+6 Ulithi Falalop Community Action Program, Yap, FSM  
 
 The repository contains data, scripts, and output related to the generation and QC of WGS, proteomic, and metabolomic datasets for *Montipora*, *Pocillopora*, and *Acropora* colonies collected from Ulithi Atoll, Yap State, FSM.
 
-Dataset is associated with [Chille et al. 2026]().
+Workflows are associated with [Chille et al. 2026](https://doi.org/10.64898/2026.05.21.726996).  
+
+Datasets deposited on [Zenodo](https://zenodo.org/records/19582294).
 
 ## Abstract
 

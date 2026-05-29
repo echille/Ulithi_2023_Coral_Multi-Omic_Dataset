@@ -44,6 +44,7 @@ This workflow utilizes the TidyMass package which includes tidyR and ggplot as d
 #  remotes::install_gitlab("tidymass/tidymass")
 ```
 
+
 Clear environment and load package(s)
 
 ```{r, warning=FALSE}
@@ -54,6 +55,7 @@ library(readr)
 library(dplyr)
 library(ggplotify)
 library(hexbin)
+library(readr)
 ```
 
 ### Input Files Preparation
@@ -70,14 +72,25 @@ This workflow requires [three files for each ionization mode]{.underline}:
 
 Note that your [sample IDs must match exactly across all files]{.underline} and [sample_info must match the compound ID in the associated expression data table]{.underline}.
 
+**sample_info:** The columns `sample_id` (sample ID), `injection.order` (injection order of samples), `class` (Blank, QC, Subject, etc), and `batch` (batch number) are required.
+
+**variable_info:** The columns `variable_id` (variable ID), `mz` (mass to charge ratio), `rt` (retention time, units are in seconds) are required.
+
+**expression_data:** The columns `variable_id` (compound ID), `mz` (mass to charge ratio), `rt` (retention time, units are in seconds), and your expression data (where column names are your sample IDs) are required. Other compound information (e.g. isotope distribution) may also be included, but is not required.
+
+**sample_groups:** The columns `sample_id` (sample ID) and `group` (control, treatment1, treatment2, etc) are required.
+
+
+### Load Prepared CSV Files & Extract Datasets
+
 Path to input files
 ```{r}
 in_path <- "3-Metabolomic_workflow/2-Acropora/1-Input"
 ```
 
 ```{r}
-peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_expression_data.csv"))
-peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_expression_data.csv"))
+peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_expression_data_normalized.csv"))
+peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_expression_data_normalized.csv"))
 
 sample_info_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_acrop_pos_sample_info.csv"))
 sample_info_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_acrop_neg_sample_info.csv"))
@@ -89,6 +102,7 @@ sample_groups_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidym
 sample_info_pos <- left_join(sample_info_pos, sample_groups_pos, by="sample_id")
 sample_info_neg <- left_join(sample_info_neg, sample_groups_neg, by="sample_id")
 ```
+
 
 Variable (metabolite) information (e.g. mass-to-charge ration ("mz"), retention time ("rt), isotope distribution ("isotope.dist")) and expression data are in the peak tables, so we have to separate them
 
@@ -326,19 +340,15 @@ object_neg <-
 Create a report of raw data quality. Save as HTML. It is recommended to review the HTML report for the pre-cleaned dataset before moving forward.
 
 ```{r}
-# massqc::massqc_report(object = object_pos,
-#                       path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_pre_cleanup")
-# massqc::massqc_report(object = object_neg,
-#                       path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_pre_cleanup")
+object_pos@sample_info$class <- gsub("Sample", "Subject", object_pos@sample_info$class)
+massqc::massqc_report(object = object_pos,
+                      path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_pre_cleanup")
+object_neg@sample_info$class <- gsub("Sample", "Subject", object_neg@sample_info$class)
+massqc::massqc_report(object = object_neg,
+                      path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_pre_cleanup")
 ```
 
-
-
 ### Filter out noisy metabolites
-
-First, we will filter out metabolites that are too highly variable across our sample set. We will follow the ['80% rule'](https://pubs.acs.org/doi/10.1021/ac051080y?src=getftr) for the thermal stress treatments in which metabolites with a missingness frequency of 80% across the control and stress treatment are removed.
-
-**Note:** While the '80% rule' is the standard for the metabolomics field, you should consider whether is makes sense for your experimental design, assess how it impacts your data, and apply a different filtering threshold, if necessary
 
 #### Positive
 
@@ -350,9 +360,9 @@ show_variable_missing_values(object = object_pos %>%
   scale_size_continuous(range = c(0.01, 2))
 ```
 
-The standard method of applying the 80% rule
+Filter such that metabolites with a missingness frequency of 40% or higher across all samples are removed
 ```{r}
-MV.lim = 0.8 #standard missing value threshold for both datasets
+MV.lim = 0.4 #standard missing value threshold for Acropora
 
 nfeatures_before <- nrow(extract_variable_info(object_pos))
 
@@ -394,9 +404,9 @@ show_variable_missing_values(object = object_neg %>%
   scale_size_continuous(range = c(0.01, 2))
 ```
 
-The standard method of applying the 80% rule
+Filter such that metabolites with a missingness frequency of 40% or higher across all samples are removed
 ```{r}
-MV.lim = 0.8 #standard missing value threshold for both datasets
+MV.lim = 0.4 #standard missing value threshold for Acropora
 
 nfeatures_before <- nrow(extract_variable_info(object_neg))
 
@@ -430,11 +440,11 @@ show_variable_missing_values(object = object_neg %>%
 
 ### Identify and remove outlier samples
 
-#### Positive
-
 [Outlier detection]{.underline}
 
 Visualize the samples
+
+Positive
 ```{r}
 massdataset::show_sample_missing_values(object = object_pos,
                                         color_by = "group",
@@ -445,7 +455,22 @@ massdataset::show_sample_missing_values(object = object_pos,
   ggsci::scale_color_aaas()
 
 ```
-Detect outlier samples
+Negative
+```{r}
+massdataset::show_sample_missing_values(object = object_neg,
+                                        color_by = "group",
+                                        order_by = "injection.order",
+                                        percentage = TRUE) +
+  theme(axis.text.x = element_text(size = 2)) +
+  scale_size_continuous(range = c(0.1, 2)) +
+  ggsci::scale_color_aaas()
+
+```
+
+
+Detect outliers in samples
+
+Positive
 ```{r}
 outlier_samples_pos =
   object_pos %>%
@@ -460,25 +485,54 @@ outlier_table_pos <- extract_outlier_table(outlier_samples_pos) %>%
   apply(1, function(x){
     sum(x)
   }) %>%
-  `>`(0) %>%
+  `>`(1) %>%
   which()
 outlier_table_pos
 ```
 
 No positive outliers detected. (need to be identified in 2/4 of the tidymass tests)
 
+Negative
+```{r}
+outlier_samples_neg =
+  object_neg %>%
+  `+`(1) %>% 
+  log(2) %>%
+  scale() %>%
+  detect_outlier(); outlier_samples_neg
+```
+
+```{r}
+outlier_table_neg <- extract_outlier_table(outlier_samples_neg) %>%
+  apply(1, function(x){
+    sum(x)
+  }) %>%
+  `>`(1) %>%
+  which()
+outlier_table_neg
+```
+No negative outliers detected. (need to be identified in 2/4 of the tidymass tests)
+
 [Outlier removal]{.underline}
 
-If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
+If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. 
 
 Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
+
+
+Combine all outliers into one list.
+```{r}
+outlier_table_all <- c(outlier_table_pos, outlier_table_neg)
+```
+
+[Remove from Positive Dataset]{.underline}
 
 ```{r}
 nrow(extract_sample_info(object_pos)) #number of samples before
 
-# object_pos <- object_pos %>%
-#   activate_mass_dataset(what = "sample_info") %>%
-#   filter(!sample_id%in%names(outlier_list_pos))
+object_pos <- object_pos %>%
+  activate_mass_dataset(what = "sample_info") %>%
+  filter(!sample_id%in%names(outlier_table_all))
 
 nrow(extract_sample_info(object_pos)) #number of samples after
 ```
@@ -502,72 +556,16 @@ ggplot(data = pos_pca, aes_string(x = "PC1", y = "PC2")) +
   coord_fixed() 
 ```
 
-#### Negative
-
-[Outlier detection]{.underline}
-
-Visualize the samples
-```{r}
-massdataset::show_sample_missing_values(object = object_neg,
-                                        color_by = "group",
-                                        order_by = "injection.order",
-                                        percentage = TRUE) +
-  theme(axis.text.x = element_text(size = 2)) +
-  scale_size_continuous(range = c(0.1, 2)) +
-  ggsci::scale_color_aaas()
-
-```
-
-Detect outlier samples
-```{r}
-outlier_samples_neg =
-  object_neg %>%
-  `+`(1) %>% 
-  log(2) %>%
-  scale() %>%
-  detect_outlier(); outlier_samples_neg
-```
-
-```{r}
-outlier_table_neg <- extract_outlier_table(outlier_samples_neg) %>%
-  apply(1, function(x){
-    sum(x)
-  }) %>%
-  `>`(0) %>%
-  which()
-outlier_table_neg
-```
-
-No Negative outliers detected. (need to be identified in 2/4 of the tidymass tests)
-
-[Outlier removal]{.underline}
-
-If outliers were detected in *either* ionization mode, they should be removed from *both* so as not to skew the results. We detected two samples as outliers in the negative ionization, so we will remove them from both datasets.
-
-Outliers are removed if they meet the requirements of 2/4 of the masscleaner tests (according_to_na, according_to_pc_sd, according_to_pc_mad, accordint_to_distance)
-
+[Remove from Negative Dataset]{.underline}
 ```{r}
 nrow(extract_sample_info(object_neg)) #number of samples before
 
-# object_neg <- object_neg %>%
-#   activate_mass_dataset(what = "sample_info") %>%
-#   filter(!sample_id%in%names(outlier_list_neg))
+object_neg <- object_neg %>%
+  activate_mass_dataset(what = "sample_info") %>%
+  filter(!sample_id%in%names(outlier_table_all))
 
 nrow(extract_sample_info(object_neg)) #number of samples after
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
 Check the results of removing outliers
 ```{r}
 neg_exp_mat <- extract_expression_data(object_neg)
@@ -591,31 +589,19 @@ ggplot(data = neg_pca, aes_string(x = "PC1", y = "PC2")) +
 
 ```{r}
 show_sample_missing_values(object = object_pos, percentage = TRUE)
-x.axis.order <- c("A23", "A325", "A331", "A306", "A22", "A21", "A26", "A309", "A25", "A339", "A328", "A326", "M63", "M61", "A323", "M62", "A340", "M64", "M65", "A24", "A315")
 
 MVplot.pos <- show_sample_missing_values(object = object_pos, 
                                          percentage = TRUE)
-MVplot.pos.ordered <- MVplot.pos +  scale_x_discrete(limits = x.axis.order)
-
-print(MVplot.pos.ordered)
-
-ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_pos_before_imputation_acropora.pdf", plot = MVplot.pos.ordered, width = 9.1, height = 7, units = "in")
+ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_pos_before_imputation_acropora.pdf", plot = MVplot.pos, width = 9.1, height = 7, units = "in")
 ```
 
 ```{r}
 show_sample_missing_values(object = object_neg, percentage = TRUE)
-x.axis.order <- c("A23", "A325", "A331", "A306", "A22", "A21", "A26", "A309", "A25", "A339", "A328", "A326", "M63", "M61", "A323", "M62", "A340", "M64", "M65", "A24", "A315")
 
 MVplot.neg <- show_sample_missing_values(object = object_neg, 
                                          percentage = TRUE)
-MVplot.neg.ordered <- MVplot.neg +  scale_x_discrete(limits = x.axis.order)
-
-print(MVplot.neg.ordered)
-
-ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_neg_before_imputation_acropora.pdf", plot = MVplot.neg.ordered, width = 9.1, height = 7, units = "in")
+ggsave("3-Metabolomic_workflow/2-Acropora/3-Output/MVplot_neg_before_imputation_acropora.pdf", plot = MVplot.neg, width = 9.1, height = 7, units = "in")
 ```
-
-
 
 ### Missing value imputation
 
@@ -625,8 +611,7 @@ Here, we use the random forest method to impute missing values for our two datas
 ```{r}
 get_mv_number(object_pos)
 
-object_pos <- 
-  impute_mv(object = object_pos, method = "rf")
+object_pos <- impute_mv(object = object_pos, method = "rf")
 
 get_mv_number(object_pos)
 ```
@@ -734,7 +719,7 @@ pos_plot <- object_pos2 %>%
 Create a report of raw data quality. Save as HTML.
 
 ```{r, echo=F}
-# massqc::massqc_report(object = object_pos2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_post_cleanup")
+massqc::massqc_report(object = object_pos2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Pos_data_quality_post_cleanup")
 ```
 
 #### Negative
@@ -787,7 +772,7 @@ neg_plot <- object_neg2 %>%
 Create a report of raw data quality. Save as HTML.
 
 ```{r, echo=F}
-# massqc::massqc_report(object = object_neg2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_post_cleanup")
+massqc::massqc_report(object = object_neg2, path = "3-Metabolomic_workflow/2-Acropora/3-Output/Neg_data_quality_post_cleanup")
 ```
 
 ## Technical variable correction
@@ -806,9 +791,85 @@ MNC <- object_neg2@sample_info
     MNC <- MNC %>% mutate(Ion_mode = "Negative Ionization") %>% mutate(Data_type = "Cleaned Data")
 ```
 
+### PCA before correction
+
+PCA Function
+```{r}
+PCA_loc_ggplot <- function(PC_plot, var_plot, title) {
+    ggplot(PC_plot, 
+    aes(x = PC1, y = PC2, colour = injection.order)) +
+    geom_point() +
+    ggtitle(paste(title)) +
+    xlab(paste0("PC1: ", var_plot$PC1, "% variance")) +
+    ylab(paste0("PC2: ", var_plot$PC2, "% variance")) +
+    xlim(-120, 120) +
+    ylim(-120, 120) +
+    theme_bw() + #Set background color
+    theme(panel.border = element_blank(), # Set border
+        axis.line = element_line(colour = "black", size = 0.6), #Set axes color
+        axis.title = element_text(colour = "black", size = 10, face = "bold"), #Axis title size
+        plot.background=element_blank(), #Set the plot background
+        plot.title = element_text(color="black", size=14, face="bold")
+)
+}
+```
+
+Positive
+```{r}
+results.EDPC <- prcomp(EDPC, scale = TRUE) #calculate principal components
+results.EDPC$rotation <- -1*results.EDPC$rotation #reverse the signs
+results.EDPC$x <- -1*results.EDPC$x #reverse the signs of the scores
+PC.EDPC <- as.data.frame(results.EDPC$x) #store in a data frame
+PC.EDPC.summary <- summary(results.EDPC) #check the proportion of variance
+variance.EDPC = (results.EDPC$sdev^2 / sum(results.EDPC$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDPC <- as.data.frame(variance.EDPC) #store variance in a dataframe
+variance.EDPC$PCs <- colnames(PC.EDPC)
+
+#reorient and store for ggplots
+var_plot.EDPC <- variance.EDPC
+var_plot.EDPC$variance.EDPC <- round(var_plot.EDPC$variance.EDPC, digits = 0)
+var_plot.EDPC <- as.data.frame(t(var_plot.EDPC))
+colnames(var_plot.EDPC) <- var_plot.EDPC[2,]
+PC_plot.EDPC <- PC.EDPC
+PC_plot.EDPC$sample_id <- rownames(PC_plot.EDPC)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDPC <- full_join(PC_plot.EDPC, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDPC <- PCA_loc_ggplot(PC_plot = PC_plot.EDPC, var_plot = var_plot.EDPC, title = "injection.order bias present - Acropora - Positive"); PCA_plot.EDPC
+```
+
+
+Negative
+```{r}
+results.EDNC <- prcomp(EDNC, scale = TRUE) #calculate principal components
+results.EDNC$rotation <- -1*results.EDNC$rotation #reverse the signs
+results.EDNC$x <- -1*results.EDNC$x #reverse the signs of the scores
+PC.EDNC <- as.data.frame(results.EDNC$x) #store in a data frame
+PC.EDNC.summary <- summary(results.EDNC) #check the proportion of variance
+variance.EDNC = (results.EDNC$sdev^2 / sum(results.EDNC$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDNC <- as.data.frame(variance.EDNC) #store variance in a dataframe
+variance.EDNC$PCs <- colnames(PC.EDNC)
+
+#reorient and store for ggplots
+var_plot.EDNC <- variance.EDNC
+var_plot.EDNC$variance.EDNC <- round(var_plot.EDNC$variance.EDNC, digits = 0)
+var_plot.EDNC <- as.data.frame(t(var_plot.EDNC))
+colnames(var_plot.EDNC) <- var_plot.EDNC[2,]
+PC_plot.EDNC <- PC.EDNC
+PC_plot.EDNC$sample_id <- rownames(PC_plot.EDNC)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDNC <- full_join(PC_plot.EDNC, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDNC <- PCA_loc_ggplot(PC_plot = PC_plot.EDNC, var_plot = var_plot.EDNC, title = "injection.order bias present - Acropora - Negative"); PCA_plot.EDNC
+```
+
 ### Get rid of technical bias
 
-Get rid of injection order bias in the positive expression data
+Positive
 ```{r}
 library(limma)
 MPC_corr <- MPC %>% dplyr::select(injection.order, sample_id)
@@ -821,12 +882,13 @@ MPC_corr <- as.data.frame(lapply(MPC_corr, as.numeric))
 design <- model.matrix(~sample_id + injection.order, data = MPC_corr)
 sample_id.design <- design[, 1:2]
 batch.design <- design[, -(1:2)]
-corr.data <- removeBatchEffect(t(EDPC), design = sample_id.design, covariates = batch.design)
+corr.data.pos <- removeBatchEffect(t(EDPC), design = sample_id.design, covariates = batch.design)
 
-EDPC <- corr.data
+EDPC.cln      <- corr.data.pos
+EDPC.cln.save <- corr.data.pos
 ```
 
-Get rid of injection order bias in the negative expression data
+Negative
 ```{r}
 MNC_corr <- MNC %>% dplyr::select(injection.order, sample_id)
 row.names(MNC_corr) <- MNC$sample_id
@@ -838,22 +900,202 @@ MNC_corr <- as.data.frame(lapply(MNC_corr, as.numeric))
 design <- model.matrix(~sample_id + injection.order, data = MNC_corr)
 sample_id.design <- design[, 1:2]
 batch.design <- design[, -(1:2)]
-corr.data <- removeBatchEffect(t(EDNC), design = sample_id.design, covariates = batch.design)
+corr.data.neg <- removeBatchEffect(t(EDNC), design = sample_id.design, covariates = batch.design)
 
-EDNC <- corr.data
+EDNC.cln      <- corr.data.neg
+EDNC.cln.save <- corr.data.neg
+```
+
+### PCA after correction
+
+## Positive
+
+Re-orient data for PCA
+```{r}
+EDPC.cln[EDPC.cln < 0] <- 1
+EDPC.cln <- log(EDPC.cln) %>% t()
+#remove metabolites w/o variance
+sds <- apply(EDPC.cln, 2, sd, na.rm = TRUE) # Check for variance using std deviation
+names(sds)[sds == 0] # Print columns that have a standard deviation of 0
+EDPC.cln <- EDPC.cln[, apply(EDPC.cln, 2, sd, na.rm = TRUE) > 0] # Keep only columns w/ variance
+```
+
+```{r}
+results.EDPC.cln <- prcomp(EDPC.cln, scale = TRUE) #calculate principal components
+results.EDPC.cln$rotation <- -1*results.EDPC.cln$rotation #reverse the signs
+results.EDPC.cln$x <- -1*results.EDPC.cln$x #reverse the signs of the scores
+PC.EDPC.cln <- as.data.frame(results.EDPC.cln$x) #store in a data frame
+PC.EDPC.cln.summary <- summary(results.EDPC.cln) #check the proportion of variance
+variance.EDPC.cln = (results.EDPC.cln$sdev^2 / sum(results.EDPC.cln$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDPC.cln <- as.data.frame(variance.EDPC.cln) #store variance in a dataframe
+variance.EDPC.cln$PCs <- colnames(PC.EDPC.cln)
+
+#reorient and store for ggplots
+var_plot.EDPC.cln <- variance.EDPC.cln
+var_plot.EDPC.cln$variance.EDPC.cln <- round(var_plot.EDPC.cln$variance.EDPC.cln, digits = 0)
+var_plot.EDPC.cln <- as.data.frame(t(var_plot.EDPC.cln))
+colnames(var_plot.EDPC.cln) <- var_plot.EDPC.cln[2,]
+PC_plot.EDPC.cln <- PC.EDPC.cln
+PC_plot.EDPC.cln$sample_id <- rownames(PC_plot.EDPC.cln)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDPC.cln <- full_join(PC_plot.EDPC.cln, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDPC.cln <- PCA_loc_ggplot(PC_plot = PC_plot.EDPC.cln, var_plot = var_plot.EDPC.cln, title = "injection.order bias removed - Acropora - Positive"); PCA_plot.EDPC.cln
+```
+PCA indicates no additional samples should be removed.
+
+## Negative
+
+Re-orient data for PCA
+```{r}
+EDNC.cln[EDNC.cln < 0] <- 1
+EDNC.cln <- log(EDNC.cln) %>% t()
+#remove metabolites w/o variance
+sds <- apply(EDNC.cln, 2, sd, na.rm = TRUE) # Check for variance using std deviation
+names(sds)[sds == 0] # Print columns that have a standard deviation of 0
+EDNC.cln <- EDNC.cln[, apply(EDNC.cln, 2, sd, na.rm = TRUE) > 0] # Keep only columns w/ variance
+```
+```{r}
+results.EDNC.cln <- prcomp(EDNC.cln, scale = TRUE) #calculate principal components
+results.EDNC.cln$rotation <- -1*results.EDNC.cln$rotation #reverse the signs
+results.EDNC.cln$x <- -1*results.EDNC.cln$x #reverse the signs of the scores
+PC.EDNC.cln <- as.data.frame(results.EDNC.cln$x) #store in a data frame
+PC.EDNC.cln.summary <- summary(results.EDNC.cln) #check the proportion of variance
+variance.EDNC.cln = (results.EDNC.cln$sdev^2 / sum(results.EDNC.cln$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDNC.cln <- as.data.frame(variance.EDNC.cln) #store variance in a dataframe
+variance.EDNC.cln$PCs <- colnames(PC.EDNC.cln)
+
+#reorient and store for ggplots
+var_plot.EDNC.cln <- variance.EDNC.cln
+var_plot.EDNC.cln$variance.EDNC.cln <- round(var_plot.EDNC.cln$variance.EDNC.cln, digits = 0)
+var_plot.EDNC.cln <- as.data.frame(t(var_plot.EDNC.cln))
+colnames(var_plot.EDNC.cln) <- var_plot.EDNC.cln[2,]
+PC_plot.EDNC.cln <- PC.EDNC.cln
+PC_plot.EDNC.cln$sample_id <- rownames(PC_plot.EDNC.cln)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDNC.cln <- full_join(PC_plot.EDNC.cln, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDNC.cln <- PCA_loc_ggplot(PC_plot = PC_plot.EDNC.cln, var_plot = var_plot.EDNC.cln, title = "injection.order bias removed - Acropora - Negative"); PCA_plot.EDNC.cln
+```
+PCA indicates two additional outlier samples should be removed.
+
+Identify outliers in the PCA
+```{r}
+library(dplyr)
+PC1_mean <- mean(abs(PC_plot.EDNC.cln$PC1))
+PC1_stdv <- sd(abs(PC_plot.EDNC.cln$PC1))
+
+high <- abs(PC1_mean + (2*PC1_stdv))
+
+PCA.outliers <- PC_plot.EDNC.cln %>%
+  dplyr::filter(abs(PC1) > high)
+PCA.outliers <- PCA.outliers$sample_id
+
+```
+
+M62 and A323 identified as outliers.
+
+Remove from negative and positive
+```{r}
+EDNC.cln.save <- EDNC.cln.save[, !colnames(EDNC.cln.save) %in% PCA.outliers]
+EDPC.cln.save <- EDPC.cln.save[, !colnames(EDPC.cln.save) %in% PCA.outliers]
+```
+
+Redo the final PCAs
+
+## Positive
+
+Re-orient data for PCA
+```{r}
+EDPC.cln <- EDPC.cln.save
+EDPC.cln[EDPC.cln < 0] <- 1
+EDPC.cln <- log(EDPC.cln) %>% t()
+#remove metabolites w/o variance
+sds <- apply(EDPC.cln, 2, sd, na.rm = TRUE) # Check for variance using std deviation
+names(sds)[sds == 0] # Print columns that have a standard deviation of 0
+EDPC.cln <- EDPC.cln[, apply(EDPC.cln, 2, sd, na.rm = TRUE) > 0] # Keep only columns w/ variance
+```
+
+```{r}
+results.EDPC.cln <- prcomp(EDPC.cln, scale = TRUE) #calculate principal components
+results.EDPC.cln$rotation <- -1*results.EDPC.cln$rotation #reverse the signs
+results.EDPC.cln$x <- -1*results.EDPC.cln$x #reverse the signs of the scores
+PC.EDPC.cln <- as.data.frame(results.EDPC.cln$x) #store in a data frame
+PC.EDPC.cln.summary <- summary(results.EDPC.cln) #check the proportion of variance
+variance.EDPC.cln = (results.EDPC.cln$sdev^2 / sum(results.EDPC.cln$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDPC.cln <- as.data.frame(variance.EDPC.cln) #store variance in a dataframe
+variance.EDPC.cln$PCs <- colnames(PC.EDPC.cln)
+
+#reorient and store for ggplots
+var_plot.EDPC.cln <- variance.EDPC.cln
+var_plot.EDPC.cln$variance.EDPC.cln <- round(var_plot.EDPC.cln$variance.EDPC.cln, digits = 0)
+var_plot.EDPC.cln <- as.data.frame(t(var_plot.EDPC.cln))
+colnames(var_plot.EDPC.cln) <- var_plot.EDPC.cln[2,]
+PC_plot.EDPC.cln <- PC.EDPC.cln
+PC_plot.EDPC.cln$sample_id <- rownames(PC_plot.EDPC.cln)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDPC.cln <- full_join(PC_plot.EDPC.cln, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDPC.cln <- PCA_loc_ggplot(PC_plot = PC_plot.EDPC.cln, var_plot = var_plot.EDPC.cln, title =  "injection.order bias removed - outliers removed - Acropora - Positive"); PCA_plot.EDPC.cln
+```
+
+
+## Negative
+
+Re-orient data for PCA
+```{r}
+EDNC.cln <- EDNC.cln.save
+EDNC.cln[EDNC.cln < 0] <- 1
+EDNC.cln <- log(EDNC.cln) %>% t()
+#remove metabolites w/o variance
+sds <- apply(EDNC.cln, 2, sd, na.rm = TRUE) # Check for variance using std deviation
+names(sds)[sds == 0] # Print columns that have a standard deviation of 0
+EDNC.cln <- EDNC.cln[, apply(EDNC.cln, 2, sd, na.rm = TRUE) > 0] # Keep only columns w/ variance
+```
+
+```{r}
+results.EDNC.cln <- prcomp(EDNC.cln, scale = TRUE) #calculate principal components
+results.EDNC.cln$rotation <- -1*results.EDNC.cln$rotation #reverse the signs
+results.EDNC.cln$x <- -1*results.EDNC.cln$x #reverse the signs of the scores
+PC.EDNC.cln <- as.data.frame(results.EDNC.cln$x) #store in a data frame
+PC.EDNC.cln.summary <- summary(results.EDNC.cln) #check the proportion of variance
+variance.EDNC.cln = (results.EDNC.cln$sdev^2 / sum(results.EDNC.cln$sdev^2))*100 #pull out total variance explained by each principal component
+variance.EDNC.cln <- as.data.frame(variance.EDNC.cln) #store variance in a dataframe
+variance.EDNC.cln$PCs <- colnames(PC.EDNC.cln)
+
+#reorient and store for ggplots
+var_plot.EDNC.cln <- variance.EDNC.cln
+var_plot.EDNC.cln$variance.EDNC.cln <- round(var_plot.EDNC.cln$variance.EDNC.cln, digits = 0)
+var_plot.EDNC.cln <- as.data.frame(t(var_plot.EDNC.cln))
+colnames(var_plot.EDNC.cln) <- var_plot.EDNC.cln[2,]
+PC_plot.EDNC.cln <- PC.EDNC.cln
+PC_plot.EDNC.cln$sample_id <- rownames(PC_plot.EDNC.cln)
+
+#add qualities to metadata to make easier to plot
+PC_plot.EDNC.cln <- full_join(PC_plot.EDNC.cln, MPC, by = "sample_id")
+
+#plot
+PCA_plot.EDNC.cln <- PCA_loc_ggplot(PC_plot = PC_plot.EDNC.cln, var_plot = var_plot.EDNC.cln, title = "injection.order bias removed - outliers removed - Acropora - Negative"); PCA_plot.EDNC.cln
 ```
 
 # 4. Make the final tidymass object
 
-Positve tidymass object
+Positive tidymass object
 ```{r}
-EDPC <- as.data.frame(EDPC)
-sample_info_pos <- object_pos2@sample_info
+EDPC.cln.save <- as.data.frame(EDPC.cln.save)
+sample_info_pos <- object_pos2@sample_info %>%
+  dplyr::filter(sample_id %in% colnames(EDPC.cln.save))
 variable_info_pos <- object_pos2@variable_info
 
 object_pos3 =
     create_mass_dataset(
-        expression_data = EDPC,
+        expression_data = EDPC.cln.save,
         sample_info = sample_info_pos,
         variable_info = variable_info_pos
     )
@@ -861,26 +1103,28 @@ object_pos3 =
 
 Negative tidymass object
 ```{r}
-EDNC <- as.data.frame(EDNC)
-sample_info_neg <- object_neg2@sample_info
+EDNC.cln.save <- as.data.frame(EDNC.cln.save)
+sample_info_neg <- object_neg2@sample_info %>%
+  dplyr::filter(sample_id %in% colnames(EDNC.cln.save))
 variable_info_neg <- object_neg2@variable_info
 
 object_neg3 =
     create_mass_dataset(
-        expression_data = EDNC,
+        expression_data = EDNC.cln.save,
         sample_info = sample_info_neg,
         variable_info = variable_info_neg
     )
 ```
 
-## Save Clean Data
+## Save the cleaned data
 
 ```{r}
-save(object_pos3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acr")
-save(object_neg3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acr")
-
+save(object_pos3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acrop")
+save(object_neg3, file = "3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acrop")
 
 #to load into the next session,
-# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acr")
-# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acr")
+# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_pos_massdataset_Acrop")
+# load("3-Metabolomic_workflow/2-Acropora/3-Output/Tidymass_clean_neg_massdataset_Acrop")
 ```
+
+

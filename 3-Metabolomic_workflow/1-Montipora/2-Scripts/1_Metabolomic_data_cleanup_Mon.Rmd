@@ -89,8 +89,8 @@ in_path <- "3-Metabolomic_workflow/1-Montipora/1-Input"
 ```
 
 ```{r}
-peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_expression_data_normalized.csv"))
-peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_expression_data_normalized.csv"))
+peak_table_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_expression_data.csv"))
+peak_table_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_expression_data.csv"))
 
 sample_info_pos = read_csv(file.path(in_path, "1-Positive_ionization/U23_tidymass_mont_pos_sample_info.csv"))
 sample_info_neg = read_csv(file.path(in_path, "2-Negative_ionization/U23_tidymass_mont_neg_sample_info.csv"))

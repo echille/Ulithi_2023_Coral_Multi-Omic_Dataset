@@ -1,6 +1,6 @@
 # Multi-omics data of a weedy coral species from Ulithi Atoll (Micronesia) to investigate the impact of human disturbance on coral health and resilience
 
-![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20598935.svg)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20598935.svg)](https://doi.org/10.5281/zenodo.20598935)
 
 Erin E. Chille 1 , Gabriella M. Panayotakis 1 , Timothy G. Stephens 1 , Michelle Paddack 2,3 , Nicole L. Crane 2,4 , Giacomo Bernardi 2,5 , John Rulmal, Jr. 2,6 , Debashish Bhattacharya 1,*
 
